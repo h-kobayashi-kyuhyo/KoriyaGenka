@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; }
+    .tab-active { border-bottom: 4px solid #3b82f6; color: #3b82f6; font-weight: bold; }
+    .tab-inactive { color: #6b7280; font-weight: normal; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <div id="login-view" class="flex justify-center items-center h-screen p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+      <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">業務システムログイン</h1>
+      <div class="mb-4"><label class="block text-sm font-bold mb-2">ログインID</label><input type="text" id="login-id" class="w-full p-3 border rounded bg-gray-50"></div>
+      <div class="mb-6"><label class="block text-sm font-bold mb-2">パスワード</label><input type="password" id="login-pass" class="w-full p-3 border rounded bg-gray-50"></div>
+      <p id="login-error" class="text-red-500 text-sm mb-4 hidden text-center"></p>
+      <button onclick="attemptLogin()" id="login-btn" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md">ログイン</button>
+    </div>
+  </div>
+
+  <div id="app-view" class="hidden flex flex-col h-screen">
+    <header class="bg-white shadow-sm p-4 flex justify-between items-center">
+      <h1 class="text-lg font-bold">店舗システム</h1>
+      <div class="text-sm"><span id="staff-name-display" class="font-bold text-blue-600"></span> さん <button onclick="logout()" class="ml-4 text-xs underline text-gray-400">ログアウト</button></div>
+    </header>
+
+    <div class="flex bg-white shadow-sm px-2">
+      <button onclick="switchTab('daily')" id="tab-daily" class="flex-1 py-3 text-center tab-inactive transition">廃棄・試食登録</button>
+      <button onclick="switchTab('recipe')" id="tab-recipe" class="flex-1 py-3 text-center tab-active transition">マスター管理</button>
+    </div>
+
+    <main class="flex-1 p-4 overflow-y-auto">
+      <div id="content-daily" class="hidden">
+        <h2 class="text-xl font-bold mb-4 border-b pb-2">日次業務の入力</h2>
+        <p class="text-gray-600">※次回作成します。</p>
+      </div>
+
+      <div id="content-recipe">
+        
+        <div class="flex gap-2 mb-4">
+          <select id="master-type" onchange="changeMasterView()" class="p-2 border rounded shadow-sm flex-1 font-bold text-gray-700">
+            <option value="product">🍧 かき氷製品</option>
+            <option value="source">🍯 ソース (準備中)</option>
+            <option value="material">🍓 原料</option>
+          </select>
+          <select id="action-type" onchange="changeMasterView()" class="p-2 border rounded shadow-sm flex-1 bg-yellow-50 font-bold text-yellow-700">
+            <option value="new">✨ 新規登録</option>
+            <option value="edit">✏️ 既存編集</option>
+          </select>
+        </div>
+
+        <div id="view-product">
+          <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
+            <div class="flex justify-between items-center mb-3">
+               <h3 class="font-bold text-blue-600">① 基本情報</h3>
+               <span class="text-xs bg-gray-200 px-2 py-1 rounded">製品CDは変更可</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div><label class="block text-xs mb-1">製品CD</label><input type="text" id="recipe-cd" class="w-full p-2 border rounded font-bold text-blue-700"></div>
+              <div><label class="block text-xs mb-1">製品名</label><input type="text" id="recipe-name" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">販売価格(税込)</label><input type="number" id="recipe-price" class="w-full p-2 border rounded bg-gray-50"></div>
+            </div>
+          </div>
+          <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-bold text-blue-600">② レシピ構成</h3>
+              <button onclick="addIngredientRow()" class="bg-green-500 text-white text-xs py-1 px-3 rounded shadow">＋ 追加</button>
+            </div>
+            <div id="ingredient-list" class="space-y-2"></div>
+          </div>
+          <p id="recipe-msg" class="text-center font-bold mb-2"></p>
+          <button onclick="submitRecipe()" id="recipe-save-btn" class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-md">かき氷を登録する</button>
+        </div>
+
+        <!-- 原料フォーム（★表示区分を追加） -->
+        <div id="view-material" class="hidden">
+          <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
+            <div class="flex justify-between items-center mb-3">
+               <h3 class="font-bold text-red-500">原料情報</h3>
+               <span id="mat-cd-display" class="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold">読込中...</span>
+            </div>
+            
+            <div id="mat-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
+               <label class="block text-xs text-yellow-800 mb-1 font-bold">編集する原料を選択</label>
+               <select id="edit-mat-cd" class="w-full p-2 border rounded bg-white" onchange="loadMaterialDetail()"></select>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label class="block text-xs mb-1">原料名</label><input type="text" id="mat-name" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">規格</label><input type="text" id="mat-kikaku" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">単位 (g, ml など)</label><input type="text" id="mat-unit" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">金額(税抜き)</label><input type="number" id="mat-priceEx" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">納入業者</label><input type="text" id="mat-supplier" class="w-full p-2 border rounded bg-gray-50"></div>
+              <!-- 表示区分を追加 -->
+              <div><label class="block text-xs mb-1 font-bold text-purple-600">表示区分 (空白:有効, 99:非表示)</label><input type="text" id="mat-displayFlag" class="w-full p-2 border-2 border-purple-200 rounded bg-purple-50"></div>
+              <div class="md:col-span-2"><label class="block text-xs mb-1">備考</label><input type="text" id="mat-memo" class="w-full p-2 border rounded bg-gray-50"></div>
+            </div>
+          </div>
+          <button onclick="submitMaterial()" id="mat-save-btn" class="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-md transition">原料を新規登録する</button>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let currentStaffName = '';
+    let masterDataList = []; 
+    let currentMatCd = '';
+
+    function loadMasterData() {
+      google.script.run.withSuccessHandler(function(list) {
+        masterDataList = list;
+        addIngredientRow();
+        updateEditDropdowns();
+      }).getIngredientMaster();
+      fetchNextCd();
+      fetchNextMaterialCd();
+    }
+
+    // ★改善ポイント：マスター編集用プルダウンには「すべて」表示し、非表示のものにはマークをつける
+    function updateEditDropdowns() {
+      let html = '<option value="">選択してください</option>';
+      masterDataList.forEach(item => {
+        if (item.type === '原料') {
+          const mark = item.isHidden ? ' ⚠️(非表示)' : '';
+          html += `<option value="${item.cd}">${item.name}${mark}</option>`;
+        }
+      });
+      document.getElementById('edit-mat-cd').innerHTML = html;
+    }
+
+    // ★改善ポイント：レシピ用プルダウンは「非表示フラグ（isHidden）」がついていないものだけ表示
+    function buildOptionsHTML(filterType) {
+      let html = '<option value="">選択してください</option>';
+      masterDataList.forEach(item => {
+        if (!item.isHidden) { // 非表示でないものだけ！
+          if (filterType === 'all' || item.type === filterType) {
+            html += `<option value="${item.cd}">[${item.type}] ${item.name}</option>`;
+          }
+        }
+      });
+      return html;
+    }
+
+    function changeMasterView() {
+      const master = document.getElementById('master-type').value;
+      const action = document.getElementById('action-type').value;
+
+      document.getElementById('view-product').classList.add('hidden');
+      document.getElementById('view-material').classList.add('hidden');
+
+      if (master === 'product') {
+        document.getElementById('view-product').classList.remove('hidden');
+        if (action === 'edit') {
+          alert("かき氷の編集機能は今後のステップで実装します。現在は新規登録のみ可能です。");
+          document.getElementById('action-type').value = 'new';
+        }
+      } else if (master === 'material') {
+        document.getElementById('view-material').classList.remove('hidden');
+        const editSelect = document.getElementById('mat-edit-select');
+        const saveBtn = document.getElementById('mat-save-btn');
+        
+        if (action === 'edit') {
+          editSelect.classList.remove('hidden');
+          saveBtn.textContent = '上書き保存する';
+          document.getElementById('mat-cd-display').textContent = '（選択してください）';
+          clearMatForm();
+        } else {
+          editSelect.classList.add('hidden');
+          saveBtn.textContent = '原料を新規登録する';
+          fetchNextMaterialCd();
+          clearMatForm();
+        }
+      } else if (master === 'source') {
+        alert("ソース管理機能は次のステップで実装します！");
+        document.getElementById('master-type').value = 'product';
+        changeMasterView();
+      }
+    }
+
+    function loadMaterialDetail() {
+      const cd = document.getElementById('edit-mat-cd').value;
+      if (!cd) { clearMatForm(); return; }
+      
+      currentMatCd = cd;
+      document.getElementById('mat-cd-display').textContent = cd;
+      
+      google.script.run.withSuccessHandler(function(detail) {
+        if(detail) {
+          document.getElementById('mat-name').value = detail.name;
+          document.getElementById('mat-kikaku').value = detail.kikaku;
+          document.getElementById('mat-unit').value = detail.unit;
+          document.getElementById('mat-priceEx').value = detail.priceEx;
+          document.getElementById('mat-supplier').value = detail.supplier;
+          document.getElementById('mat-memo').value = detail.memo;
+          document.getElementById('mat-displayFlag').value = detail.displayFlag; // 表示区分をセット
+        }
+      }).getMaterialDetail(cd);
+    }
+
+    function clearMatForm() {
+      document.getElementById('mat-name').value = '';
+      document.getElementById('mat-kikaku').value = '';
+      document.getElementById('mat-unit').value = '';
+      document.getElementById('mat-priceEx').value = '';
+      document.getElementById('mat-supplier').value = '';
+      document.getElementById('mat-memo').value = '';
+      document.getElementById('mat-displayFlag').value = ''; // 表示区分をクリア
+    }
+
+    function fetchNextMaterialCd() {
+      document.getElementById('mat-cd-display').textContent = '読込中...';
+      google.script.run.withSuccessHandler(function(nextCd) {
+        currentMatCd = nextCd;
+        document.getElementById('mat-cd-display').textContent = nextCd;
+      }).getNextMaterialCd();
+    }
+
+    function submitMaterial() {
+      const action = document.getElementById('action-type').value;
+      if (action === 'edit' && !currentMatCd) { alert("編集する原料を選択してください。"); return; }
+      
+      const payload = {
+        mode: action,
+        cd: currentMatCd,
+        name: document.getElementById('mat-name').value,
+        kikaku: document.getElementById('mat-kikaku').value,
+        unit: document.getElementById('mat-unit').value,
+        priceEx: Number(document.getElementById('mat-priceEx').value),
+        supplier: document.getElementById('mat-supplier').value,
+        memo: document.getElementById('mat-memo').value,
+        displayFlag: document.getElementById('mat-displayFlag').value // 表示区分を送信
+      };
+
+      if (!payload.name) { alert("原料名を入力してください。"); return; }
+
+      const btn = document.getElementById('mat-save-btn');
+      btn.disabled = true; btn.textContent = '保存中...';
+
+      google.script.run.withSuccessHandler(function(res) {
+        btn.disabled = false;
+        btn.textContent = res.mode === 'new' ? '原料を新規登録する' : '上書き保存する';
+        alert("保存が完了しました！");
+        clearMatForm();
+        
+        if (res.mode === 'new') fetchNextMaterialCd();
+        
+        // 保存後に裏側のリストを更新
+        google.script.run.withSuccessHandler(function(list) {
+          masterDataList = list;
+          updateEditDropdowns();
+          // かき氷の入力行のリストも作り直す
+          document.querySelectorAll('.ingredient-cd').forEach(sel => {
+            const rowType = sel.closest('.ingredient-row').querySelector('select').value;
+            sel.innerHTML = buildOptionsHTML(rowType);
+          });
+        }).getIngredientMaster();
+      }).saveMaterial(payload);
+    }
+
+    function fetchNextCd() {
+      google.script.run.withSuccessHandler(function(nextCd) {
+        document.getElementById('recipe-cd').value = nextCd;
+      }).getNextProductCd();
+    }
+
+    function attemptLogin() {
+      const id = document.getElementById('login-id').value;
+      const pass = document.getElementById('login-pass').value;
+      const btn = document.getElementById('login-btn');
+      const err = document.getElementById('login-error');
+      if (!id || !pass) return;
+      btn.disabled = true; btn.textContent = '確認中...';
+      google.script.run.withSuccessHandler(function(res) {
+        btn.disabled = false; btn.textContent = 'ログイン';
+        if (res.success) {
+          document.getElementById('staff-name-display').textContent = res.staffName;
+          document.getElementById('login-view').classList.add('hidden');
+          document.getElementById('app-view').classList.remove('hidden');
+          loadMasterData();
+        } else { err.textContent = res.message; err.classList.remove('hidden'); }
+      }).checkLogin(id, pass);
+    }
+
+    function logout() { location.reload(); }
+
+    function switchTab(tabName) {
+      const tDaily = document.getElementById('tab-daily'), tRecipe = document.getElementById('tab-recipe');
+      const cDaily = document.getElementById('content-daily'), cRecipe = document.getElementById('content-recipe');
+      if (tabName === 'daily') {
+        tDaily.className = 'flex-1 py-3 text-center tab-active transition';
+        tRecipe.className = 'flex-1 py-3 text-center tab-inactive transition';
+        cDaily.classList.remove('hidden'); cRecipe.classList.add('hidden');
+      } else {
+        tDaily.className = 'flex-1 py-3 text-center tab-inactive transition';
+        tRecipe.className = 'flex-1 py-3 text-center tab-active transition';
+        cDaily.classList.add('hidden'); cRecipe.classList.remove('hidden');
+      }
+    }
+
+    function addIngredientRow() {
+      const container = document.getElementById('ingredient-list');
+      const row = document.createElement('div');
+      row.className = 'flex gap-2 items-center bg-gray-50 p-2 border rounded ingredient-row';
+      row.innerHTML = `
+        <div class="w-24"><select class="w-full p-2 border rounded bg-gray-200 text-xs" onchange="changeFilter(this)"><option value="all">すべて</option><option value="ソース">ソース</option><option value="原料">原料</option></select></div>
+        <div class="flex-1"><select class="w-full p-2 border rounded bg-white ingredient-cd">${buildOptionsHTML('all')}</select></div>
+        <div class="w-24"><input type="number" class="w-full p-2 border rounded ingredient-amount" placeholder="g/ml"></div>
+        <button onclick="this.parentElement.remove()" class="text-red-500 font-bold px-2 rounded">×</button>`;
+      container.appendChild(row);
+    }
+
+    function changeFilter(sel) {
+      sel.closest('.ingredient-row').querySelector('.ingredient-cd').innerHTML = buildOptionsHTML(sel.value);
+    }
+
+    function submitRecipe() {
+      const cd = document.getElementById('recipe-cd').value;
+      const name = document.getElementById('recipe-name').value;
+      const price = document.getElementById('recipe-price').value;
+      if(!cd || !name || !price) { alert("製品CD、製品名、販売価格を入力してください。"); return; }
+      
+      const rows = document.querySelectorAll('.ingredient-row');
+      let ingredients = [];
+      rows.forEach(row => {
+        const ingCd = row.querySelector('.ingredient-cd').value;
+        const amount = row.querySelector('.ingredient-amount').value;
+        if(ingCd && amount) ingredients.push({ cd: ingCd, amount: Number(amount) });
+      });
+      if(ingredients.length === 0) { alert("原料を入力してください。"); return; }
+
+      const btn = document.getElementById('recipe-save-btn');
+      btn.disabled = true; btn.textContent = "登録中...";
+      
+      google.script.run.withSuccessHandler(function(res) {
+        btn.disabled = false; btn.textContent = "かき氷を登録する";
+        if(res.success) {
+          alert(`登録完了！ (製品CD: ${res.generatedCd})`);
+          document.getElementById('recipe-name').value = '';
+          document.getElementById('recipe-price').value = '';
+          document.getElementById('ingredient-list').innerHTML = '';
+          addIngredientRow(); fetchNextCd();
+        }
+      }).saveRecipe({ productCd: cd, productName: name, price: Number(price), ingredients: ingredients });
+    }
+  </script>
+</body>
+</html>
