@@ -555,3 +555,148 @@ function getUserList() {
   
   return ids;
 }
+
+/**
+ * ===================================================
+ * 【ユーザーマスタ管理】の追加関数
+ * ===================================================
+ */
+function getUserDetail(id) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  if (!sheet) return null;
+  
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return null;
+  
+  const data = sheet.getRange(1, 1, lastRow, 3).getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) {
+      return { id: data[i][0], pass: data[i][1], name: data[i][2] };
+    }
+  }
+  return null;
+}
+
+function saveUser(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('m_user');
+  if (!sheet) {
+    sheet = ss.insertSheet('m_user');
+    sheet.appendRow(['ID', 'Password', 'Name']);
+  }
+  
+  if (data.mode === 'new') {
+    const nextRow = getRealLastRow(sheet, 1) + 1;
+    sheet.getRange(nextRow, 1, 1, 3).setValues([[data.id, data.pass, data.name]]);
+  } else {
+    const lastRow = getRealLastRow(sheet, 1);
+    const idValues = sheet.getRange(1, 1, lastRow, 1).getValues();
+    let targetRow = -1;
+    for (let i = 0; i < idValues.length; i++) {
+      if (idValues[i][0] === data.id) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    if (targetRow !== -1) {
+      sheet.getRange(targetRow, 2).setValue(data.pass);
+      sheet.getRange(targetRow, 3).setValue(data.name);
+    }
+  }
+  return { success: true };
+}
+
+/**
+ * ===================================================
+ * 【日次記録（編集・削除）】の追加関数
+ * ===================================================
+ */
+function getDailyRecordList(startDateStr, endDateStr) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('t_daily_record');
+  let list = [];
+  
+  if (sheet) {
+    const lastRow = getRealLastRow(sheet, 1);
+    if (lastRow >= 2) {
+      const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+      
+      const startObj = startDateStr ? new Date(startDateStr) : new Date('2000-01-01');
+      startObj.setHours(0, 0, 0, 0);
+      const endObj = endDateStr ? new Date(endDateStr) : new Date('2100-01-01');
+      endObj.setHours(23, 59, 59, 999);
+
+      // 最新の記録が上に来るように逆順で処理
+      for (let i = data.length - 1; i >= 0; i--) {
+        const row = data[i];
+        if (row[0]) {
+          const recordDate = new Date(row[1]);
+          if (recordDate >= startObj && recordDate <= endObj) {
+            
+            // ★ポイント1：配列のインデックス(i)から、実際のシートの行番号を計算
+            const rowNum = i + 2; 
+            
+            // ★ポイント2：日付を「yyyy/MM/dd」の綺麗な形にフォーマット
+            const dateStr = Utilities.formatDate(recordDate, Session.getScriptTimeZone(), 'yyyy/MM/dd');
+            const label = `[${dateStr}] ${row[3]} - ${row[6]} (${row[2]})`;
+            
+            // 行番号をキーとして画面に渡す
+            list.push({ key: String(rowNum), label: label });
+          }
+        }
+      }
+    }
+  }
+  return list;
+}
+
+function getDailyRecordDetail(rowNumStr) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('t_daily_record');
+  if (!sheet) return null;
+  
+  const rowNum = parseInt(rowNumStr, 10);
+  
+  // 指定された行のデータを1行だけ取得
+  const data = sheet.getRange(rowNum, 1, 1, 9).getValues()[0];
+  
+  // 画面の入力フォーム（カレンダー）にセットしやすいよう、「yyyy-MM-dd」にフォーマット
+  const dateStr = Utilities.formatDate(new Date(data[1]), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  return {
+    key: rowNumStr,
+    date: dateStr,
+    staffName: data[2],
+    category: data[3],
+    itemType: data[4],
+    itemCd: data[5],
+    quantity: data[7],
+    reason: data[8]
+  };
+}
+
+function updateDailyRecord(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('t_daily_record');
+  if (!sheet) return { success: false };
+  
+  const rowNum = parseInt(data.key, 10);
+  
+  // B列からI列まで（8列分）を上書き
+  sheet.getRange(rowNum, 2, 1, 8).setValues([[
+    data.date, data.staffName, data.category, data.itemType, data.itemCd, data.itemName, data.quantity, data.reason
+  ]]);
+  return { success: true };
+}
+
+function deleteDailyRecord(rowNumStr) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('t_daily_record');
+  if (!sheet) return { success: false };
+  
+  const rowNum = parseInt(rowNumStr, 10);
+  sheet.deleteRow(rowNum); // 指定された行をズバッと削除
+  
+  return { success: true };
+}

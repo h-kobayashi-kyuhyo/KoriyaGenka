@@ -5,21 +5,17 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
   <style>
     body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; }
-    .tab-active { border-bottom: 4px solid #3b82f6; color: #3b82f6; font-weight: bold; }
-    .tab-inactive { color: #6b7280; font-weight: normal; }
   </style>
 </head>
 <body class="min-h-screen">
 
+  <!-- ログイン画面 -->
   <div id="login-view" class="flex justify-center items-center h-screen p-4">
     <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
       <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">業務システムログイン</h1>
-      <!-- ★修正：ログインIDをプルダウンに変更 -->
       <div class="mb-4">
         <label class="block text-sm font-bold mb-2">ログインID</label>
-        <select id="login-id" class="w-full p-3 border rounded bg-gray-50 font-bold">
-          <option value="">読込中...</option>
-        </select>
+        <select id="login-id" class="w-full p-3 border rounded bg-gray-50 font-bold"><option value="">読込中...</option></select>
       </div>
       <div class="mb-6"><label class="block text-sm font-bold mb-2">パスワード</label><input type="password" id="login-pass" class="w-full p-3 border rounded bg-gray-50"></div>
       <p id="login-error" class="text-red-500 text-sm mb-4 hidden text-center"></p>
@@ -28,37 +24,69 @@
   </div>
 
   <div id="app-view" class="hidden flex flex-col h-screen">
-    <header class="bg-white shadow-sm p-4 flex justify-between items-center">
+    <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
       <h1 class="text-lg font-bold">店舗システム</h1>
       <div class="text-sm"><span id="staff-name-display" class="font-bold text-blue-600"></span> さん <button onclick="logout()" class="ml-4 text-xs underline text-gray-400">ログアウト</button></div>
     </header>
 
-    <div class="flex bg-white shadow-sm px-2">
-      <button onclick="switchTab('daily')" id="tab-daily" class="flex-1 py-3 text-center tab-active transition">廃棄・試食登録</button>
-      <button onclick="switchTab('recipe')" id="tab-recipe" class="flex-1 py-3 text-center tab-inactive transition">マスター管理</button>
-    </div>
-
     <main class="flex-1 p-4 overflow-y-auto">
       
-      <!-- 日次業務（廃棄・試食）フォーム -->
-      <div id="content-daily">
+      <!-- メインメニュー画面（★新規作成） -->
+      <div id="content-menu" class="max-w-lg mx-auto mt-10">
+        <h2 class="text-2xl font-bold text-center text-gray-800 mb-8">メインメニュー</h2>
+        <div class="space-y-4">
+          <button onclick="openDaily()" class="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md text-lg transition flex items-center justify-center">
+            <span class="mr-2">📝</span> 日次記録（廃棄・試食）
+          </button>
+          <button onclick="openMaster()" class="w-full py-5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl shadow-md text-lg transition flex items-center justify-center">
+            <span class="mr-2">⚙️</span> マスター管理
+          </button>
+        </div>
+      </div>
+
+      <!-- 日次業務フォーム -->
+      <div id="content-daily" class="hidden">
+        <button onclick="backToMenu()" class="mb-4 text-sm text-gray-600 hover:text-gray-900 underline flex items-center"><span class="mr-1">◀</span> メニューへ戻る</button>
         <div class="bg-white p-6 rounded-lg shadow-sm border mb-4">
-          <h2 class="text-xl font-bold text-gray-700 mb-6 border-b pb-2">日々の記録（廃棄・試食）</h2>
+          
+          <div class="flex justify-between items-center mb-6 border-b pb-2">
+            <h2 class="text-xl font-bold text-gray-700">日々の記録（廃棄・試食）</h2>
+            <select id="daily-action-type" onchange="changeDailyMode()" class="p-2 border rounded shadow-sm bg-yellow-50 font-bold text-yellow-700">
+              <option value="new">✨ 新規登録</option>
+              <option value="edit">✏️ 編集・削除</option>
+            </select>
+          </div>
+
+        <!-- ★編集時のレコード選択と絞り込み -->
+          <div id="daily-edit-area" class="mb-6 hidden space-y-4">
+            <!-- 絞り込みカレンダー -->
+            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <label class="block text-sm text-blue-800 mb-2 font-bold">表示期間を指定して絞り込み</label>
+              <div class="flex gap-2 items-center">
+                <input type="date" id="filter-start-date" class="p-3 border rounded bg-white flex-1 font-bold" onchange="reloadDailyRecordsList()">
+                <span class="text-gray-500 font-bold">〜</span>
+                <input type="date" id="filter-end-date" class="p-3 border rounded bg-white flex-1 font-bold" onchange="reloadDailyRecordsList()">
+              </div>
+            </div>
+            <!-- 対象の選択 -->
+            <div class="p-4 bg-yellow-100 rounded-lg border border-yellow-300">
+               <label class="block text-sm text-yellow-800 mb-2 font-bold">編集・削除する記録を選択（※選択すると下に内容が反映されます）</label>
+               <select id="edit-daily-key" class="w-full p-3 border rounded bg-white text-lg font-bold" onchange="loadDailyDetail()"></select>
+            </div>
+          </div>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div><label class="block text-sm font-bold mb-1 text-gray-600">日付</label><input type="date" id="daily-date" class="w-full p-3 border rounded bg-gray-50 font-bold"></div>
             <div><label class="block text-sm font-bold mb-1 text-gray-600">登録者</label><input type="text" id="daily-staff" class="w-full p-3 border rounded bg-gray-200 font-bold text-gray-500" readonly></div>
             
-            <div>
-              <label class="block text-sm font-bold mb-1 text-gray-600">区分</label>
+            <div><label class="block text-sm font-bold mb-1 text-gray-600">区分</label>
               <select id="daily-category" onchange="updateDailyDropdowns()" class="w-full p-3 border rounded bg-white font-bold">
                 <option value="廃棄">🗑️ 廃棄</option>
                 <option value="試食">🥄 試食</option>
               </select>
             </div>
             
-            <div>
-              <label class="block text-sm font-bold mb-1 text-gray-600">マスター種別</label>
+            <div><label class="block text-sm font-bold mb-1 text-gray-600">マスター種別</label>
               <select id="daily-item-type" onchange="updateDailyDropdowns()" class="w-full p-3 border rounded bg-white">
                 <option value="product">🍧 かき氷製品</option>
                 <option value="source">🍯 ソース</option>
@@ -66,8 +94,7 @@
               </select>
             </div>
             
-            <div class="md:col-span-2">
-              <label class="block text-sm font-bold mb-1 text-gray-600">対象アイテム</label>
+            <div class="md:col-span-2"><label class="block text-sm font-bold mb-1 text-gray-600">対象アイテム</label>
               <select id="daily-item-cd" class="w-full p-3 border rounded bg-white text-lg font-bold text-blue-700"></select>
             </div>
             
@@ -75,17 +102,23 @@
             <div><label class="block text-sm font-bold mb-1 text-gray-600">理由 (任意)</label><input type="text" id="daily-reason" class="w-full p-3 border rounded bg-gray-50" placeholder="例: オペレーションミス、品質チェックなど"></div>
           </div>
           
-          <button onclick="submitDailyRecord()" id="daily-save-btn" class="w-full mt-6 py-4 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl shadow-md transition text-lg">記録を登録する</button>
+          <div class="flex gap-4 mt-6">
+            <button onclick="submitDailyRecord()" id="daily-save-btn" class="flex-1 py-4 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl shadow-md transition text-lg">記録を登録する</button>
+            <button onclick="deleteDailyRecordUI()" id="daily-delete-btn" class="hidden py-4 px-6 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition">削除</button>
+          </div>
         </div>
       </div>
 
       <!-- マスター管理フォーム -->
       <div id="content-recipe" class="hidden">
+        <button onclick="backToMenu()" class="mb-4 text-sm text-gray-600 hover:text-gray-900 underline flex items-center"><span class="mr-1">◀</span> メニューへ戻る</button>
+        
         <div class="flex gap-2 mb-4">
           <select id="master-type" onchange="changeMasterView()" class="p-2 border rounded shadow-sm flex-1 font-bold text-gray-700">
             <option value="product">🍧 かき氷製品</option>
             <option value="source">🍯 ソース</option>
             <option value="material">🍓 原料</option>
+            <option value="user">👤 ユーザーマスタ</option> <!-- ★ユーザー追加 -->
           </select>
           <select id="action-type" onchange="changeMasterView()" class="p-2 border rounded shadow-sm flex-1 bg-yellow-50 font-bold text-yellow-700">
             <option value="new">✨ 新規登録</option>
@@ -96,9 +129,7 @@
         <!-- かき氷フォーム -->
         <div id="view-product">
           <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
-            <div class="flex justify-between items-center mb-3">
-               <h3 class="font-bold text-blue-600">① 基本情報</h3>
-            </div>
+            <h3 class="font-bold text-blue-600 mb-3">① 基本情報</h3>
             <div id="product-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
                <label class="block text-xs text-yellow-800 mb-1 font-bold">編集する製品を選択</label>
                <select id="edit-product-cd" class="w-full p-2 border rounded bg-white" onchange="loadProductDetail()"></select>
@@ -123,9 +154,7 @@
         <!-- ソースフォーム -->
         <div id="view-source" class="hidden">
           <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
-            <div class="flex justify-between items-center mb-3">
-               <h3 class="font-bold text-yellow-600">① ソース基本情報</h3>
-            </div>
+            <h3 class="font-bold text-yellow-600 mb-3">① ソース基本情報</h3>
             <div id="source-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
                <label class="block text-xs text-yellow-800 mb-1 font-bold">編集するソースを選択</label>
                <select id="edit-source-cd" class="w-full p-2 border rounded bg-white" onchange="loadSourceDetail()"></select>
@@ -150,9 +179,7 @@
         <!-- 原料フォーム -->
         <div id="view-material" class="hidden">
           <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
-            <div class="flex justify-between items-center mb-3">
-               <h3 class="font-bold text-red-500">原料情報</h3>
-            </div>
+            <h3 class="font-bold text-red-500 mb-3">原料情報</h3>
             <div id="mat-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
                <label class="block text-xs text-yellow-800 mb-1 font-bold">編集する原料を選択</label>
                <select id="edit-mat-cd" class="w-full p-2 border rounded bg-white" onchange="loadMaterialDetail()"></select>
@@ -171,29 +198,71 @@
           <button onclick="submitMaterial()" id="mat-save-btn" class="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-md transition">原料を新規登録する</button>
         </div>
 
+        <!-- ユーザーマスタフォーム（★新規追加） -->
+        <div id="view-user" class="hidden">
+          <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
+            <h3 class="font-bold text-green-600 mb-3">ユーザー情報</h3>
+            <div id="user-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
+               <label class="block text-xs text-yellow-800 mb-1 font-bold">編集するユーザーを選択</label>
+               <select id="edit-user-id" class="w-full p-2 border rounded bg-white" onchange="loadUserDetail()"></select>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label class="block text-xs mb-1">ログインID</label><input type="text" id="user-id" class="w-full p-2 border rounded font-bold"></div>
+              <div><label class="block text-xs mb-1">名前</label><input type="text" id="user-name" class="w-full p-2 border rounded bg-gray-50"></div>
+              <div><label class="block text-xs mb-1">パスワード</label><input type="text" id="user-pass" class="w-full p-2 border rounded bg-gray-50"></div>
+            </div>
+          </div>
+          <button onclick="submitUser()" id="user-save-btn" class="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition">ユーザーを新規登録する</button>
+        </div>
+
       </div>
     </main>
   </div>
 
   <script>
-    let currentStaffName = '';
     let masterDataList = []; 
     let productDataList = []; 
     let currentMatCd = '';
     let currentSourceCd = '';
     let currentProductCd = '';
+    let currentDailyKey = ''; 
 
-    // ★追加：画面読み込み時にログインIDのリストを取得してセット
     document.addEventListener("DOMContentLoaded", function() {
-      google.script.run.withSuccessHandler(function(idList) {
-        let html = '<option value="">選択してください</option>';
-        idList.forEach(id => {
-          html += `<option value="${id}">${id}</option>`;
-        });
-        document.getElementById('login-id').innerHTML = html;
-      }).getUserList();
+      reloadUserDropdown();
     });
 
+    function reloadUserDropdown() {
+      google.script.run.withSuccessHandler(function(idList) {
+        let html = '<option value="">選択してください</option>';
+        idList.forEach(id => { html += `<option value="${id}">${id}</option>`; });
+        const loginSel = document.getElementById('login-id');
+        if(loginSel) loginSel.innerHTML = html;
+        const editUserSel = document.getElementById('edit-user-id');
+        if(editUserSel) editUserSel.innerHTML = html;
+      }).getUserList();
+    }
+
+    // --- メニュー遷移制御 ---
+    function openDaily() {
+      document.getElementById('content-menu').classList.add('hidden');
+      document.getElementById('content-daily').classList.remove('hidden');
+      document.getElementById('content-recipe').classList.add('hidden');
+      document.getElementById('daily-action-type').value = 'new';
+      changeDailyMode();
+    }
+    function openMaster() {
+      document.getElementById('content-menu').classList.add('hidden');
+      document.getElementById('content-daily').classList.add('hidden');
+      document.getElementById('content-recipe').classList.remove('hidden');
+      changeMasterView();
+    }
+    function backToMenu() {
+      document.getElementById('content-menu').classList.remove('hidden');
+      document.getElementById('content-daily').classList.add('hidden');
+      document.getElementById('content-recipe').classList.add('hidden');
+    }
+
+    // --- 日次業務の制御 ---
     function setTodayDate() {
       const today = new Date();
       const yyyy = today.getFullYear();
@@ -201,48 +270,118 @@
       const dd = String(today.getDate()).padStart(2, '0');
       document.getElementById('daily-date').value = `${yyyy}-${mm}-${dd}`;
     }
-
-    function loadMasterData() {
-      google.script.run.withSuccessHandler(function(list) {
-        masterDataList = list;
-        addIngredientRow('ingredient-list');
-        addIngredientRow('source-ingredient-list');
-        updateEditDropdowns();
-        updateDailyDropdowns(); 
-      }).getIngredientMaster();
+    // ★追加：絞り込みカレンダーに初期値（終了日=今日、開始日=1ヶ月前）をセットする関数
+    function setDefaultFilterDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setMonth(start.getMonth() - 1); // 1ヶ月前
       
-      fetchNextCd();
-      fetchNextMaterialCd();
-      fetchNextSourceCd();
-      loadProductList(); 
+      const formatYMD = (d) => {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      };
+      
+      document.getElementById('filter-end-date').value = formatYMD(end);
+      document.getElementById('filter-start-date').value = formatYMD(start);
     }
 
-    function loadProductList() {
+    function changeDailyMode() {
+      const mode = document.getElementById('daily-action-type').value;
+      const editArea = document.getElementById('daily-edit-area');
+      const saveBtn = document.getElementById('daily-save-btn');
+      const delBtn = document.getElementById('daily-delete-btn');
+
+      if (mode === 'edit') {
+        editArea.classList.remove('hidden');
+        saveBtn.textContent = '変更を上書き保存';
+        delBtn.classList.remove('hidden');
+        setDefaultFilterDates(); // ★カレンダーの初期値をセット
+        clearDailyForm();
+        reloadDailyRecordsList(); // ★リスト読み込み
+      } else {
+        editArea.classList.add('hidden');
+        saveBtn.textContent = '記録を登録する';
+        delBtn.classList.add('hidden');
+        clearDailyForm();
+        setTodayDate();
+        document.getElementById('daily-staff').value = document.getElementById('staff-name-display').textContent;
+      }
+    }
+
+    function reloadDailyRecordsList() {
+      const start = document.getElementById('filter-start-date').value;
+      const end = document.getElementById('filter-end-date').value;
+      
+      document.getElementById('edit-daily-key').innerHTML = '<option value="">読込中...</option>';
+      
       google.script.run.withSuccessHandler(function(list) {
-        productDataList = list;
         let html = '<option value="">選択してください</option>';
-        list.forEach(item => {
-          const mark = item.isHidden ? ' ⚠️(非表示)' : '';
-          html += `<option value="${item.cd}">${item.name}${mark}</option>`;
-        });
-        document.getElementById('edit-product-cd').innerHTML = html;
-        updateDailyDropdowns(); 
-      }).getProductList();
+        list.forEach(item => { html += `<option value="${item.key}">${item.label}</option>`; });
+        document.getElementById('edit-daily-key').innerHTML = html;
+      }).getDailyRecordList(start, end); // ★引数で日付を渡す
     }
 
-    // ★修正：試食を選んだら強制的に「かき氷製品」に固定するバリデーションを追加
-    function updateDailyDropdowns() {
+    function loadDailyDetail() {
+      const key = document.getElementById('edit-daily-key').value;
+      if (!key) { clearDailyForm(); return; }
+      currentDailyKey = key;
+      google.script.run.withSuccessHandler(function(detail) {
+        if(detail) {
+          // Dateを正しくセット (ISO形式調整が必要な場合あり)
+          try {
+            const d = new Date(detail.date);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            document.getElementById('daily-date').value = `${yyyy}-${mm}-${dd}`;
+          } catch(e) {}
+          
+          document.getElementById('daily-staff').value = detail.staffName;
+          document.getElementById('daily-category').value = detail.category;
+          
+          let itemTypeVal = 'product';
+          if(detail.itemType === 'ソース') itemTypeVal = 'source';
+          if(detail.itemType === '原料') itemTypeVal = 'material';
+          document.getElementById('daily-item-type').value = itemTypeVal;
+          
+          updateDailyDropdowns();
+          
+          setTimeout(() => { document.getElementById('daily-item-cd').value = detail.itemCd; }, 200);
+          
+          document.getElementById('daily-qty').value = detail.quantity;
+          document.getElementById('daily-reason').value = detail.reason;
+        }
+      }).getDailyRecordDetail(key);
+    }
+
+    function clearDailyForm() {
+      currentDailyKey = '';
+      document.getElementById('daily-date').value = '';
+      document.getElementById('daily-staff').value = '';
+      document.getElementById('daily-category').value = '廃棄';
+      document.getElementById('daily-item-type').value = 'product';
+      document.getElementById('daily-qty').value = '';
+      document.getElementById('daily-reason').value = '';
+      updateDailyDropdowns();
+    }
+
+   function updateDailyDropdowns() {
       const categoryObj = document.getElementById('daily-category');
       const itemTypeObj = document.getElementById('daily-item-type');
       const selectObj = document.getElementById('daily-item-cd');
       
-      // 区分が「試食」ならマスター種別を「product」に固定し、グレーアウト(disabled)にする
+      // ★ポイント1：リストを作り直す前に、現在選択されているアイテムCDを記憶しておく
+      const currentSelectedCd = selectObj.value;
+      
+      // 区分が「試食」ならマスター種別を「product」に固定し、グレーアウト
       if (categoryObj.value === '試食') {
-        itemTypeObj.value = 'product';
-        itemTypeObj.disabled = true;
-        itemTypeObj.classList.add('bg-gray-200', 'text-gray-500'); // ロックされている見た目
+        itemTypeObj.value = 'product'; 
+        itemTypeObj.disabled = true; 
+        itemTypeObj.classList.add('bg-gray-200', 'text-gray-500');
       } else {
-        itemTypeObj.disabled = false;
+        itemTypeObj.disabled = false; 
         itemTypeObj.classList.remove('bg-gray-200', 'text-gray-500');
       }
       
@@ -250,21 +389,28 @@
       let html = '<option value="">選択してください</option>';
       
       if (itemTypeVal === 'product') {
-        productDataList.forEach(item => {
-          if (!item.isHidden) html += `<option value="${item.cd}">${item.name}</option>`;
+        productDataList.forEach(item => { 
+          if (!item.isHidden) html += `<option value="${item.cd}">${item.name}</option>`; 
         });
       } else {
         const typeLabel = itemTypeVal === 'source' ? 'ソース' : '原料';
-        masterDataList.forEach(item => {
-          if (!item.isHidden && item.type === typeLabel) {
-            html += `<option value="${item.cd}">${item.name}</option>`;
-          }
+        masterDataList.forEach(item => { 
+          if (!item.isHidden && item.type === typeLabel) html += `<option value="${item.cd}">${item.name}</option>`; 
         });
       }
+      // プルダウンの中身を書き換え
       selectObj.innerHTML = html;
-    }
+      
+      // ★ポイント2：書き換えた後、記憶しておいたアイテムCDを再度セットする
+      if (currentSelectedCd) {
+        selectObj.value = currentSelectedCd;
+      }
+    }      
 
     function submitDailyRecord() {
+      const mode = document.getElementById('daily-action-type').value;
+      if (mode === 'edit' && !currentDailyKey) { alert("編集する記録を選択してください。"); return; }
+
       const date = document.getElementById('daily-date').value;
       const staffName = document.getElementById('daily-staff').value;
       const category = document.getElementById('daily-category').value;
@@ -273,72 +419,66 @@
       const quantity = document.getElementById('daily-qty').value;
       const reason = document.getElementById('daily-reason').value;
 
-      if (!date || !itemCd || !quantity) {
-        alert("日付、対象アイテム、数量は必須です！");
-        return;
-      }
+      if (!date || !itemCd || !quantity) { alert("日付、対象アイテム、数量は必須です！"); return; }
 
       const itemSelect = document.getElementById('daily-item-cd');
       const itemName = itemSelect.options[itemSelect.selectedIndex].text;
-      
       let itemTypeLabel = 'かき氷製品';
       if(itemTypeVal === 'source') itemTypeLabel = 'ソース';
       if(itemTypeVal === 'material') itemTypeLabel = '原料';
 
       const payload = {
-        date: date,
-        staffName: staffName,
-        category: category,
-        itemType: itemTypeLabel,
-        itemCd: itemCd,
-        itemName: itemName,
-        quantity: Number(quantity),
-        reason: reason
+        key: currentDailyKey, date: date, staffName: staffName, category: category,
+        itemType: itemTypeLabel, itemCd: itemCd, itemName: itemName, quantity: Number(quantity), reason: reason
       };
 
       const btn = document.getElementById('daily-save-btn');
-      btn.disabled = true;
-      btn.textContent = '保存中...';
+      btn.disabled = true; btn.textContent = '保存中...';
 
+      if (mode === 'edit') {
+        google.script.run.withSuccessHandler(function(res) {
+          btn.disabled = false; btn.textContent = '変更を上書き保存';
+          if(res.success) { alert("記録を更新しました！"); reloadDailyRecordsList(); clearDailyForm(); }
+        }).updateDailyRecord(payload);
+      } else {
+        google.script.run.withSuccessHandler(function(res) {
+          btn.disabled = false; btn.textContent = '記録を登録する';
+          if(res.success) { alert(`${category}の記録を保存しました！`); document.getElementById('daily-qty').value = ''; document.getElementById('daily-reason').value = ''; }
+        }).saveDailyRecord(payload);
+      }
+    }
+
+    function deleteDailyRecordUI() {
+      if (!currentDailyKey) return;
+      if (!confirm("本当にこの記録を削除しますか？")) return;
+      const btn = document.getElementById('daily-delete-btn');
+      btn.disabled = true; btn.textContent = '削除中...';
       google.script.run.withSuccessHandler(function(res) {
-        btn.disabled = false;
-        btn.textContent = '記録を登録する';
-        alert(`${category}の記録を保存しました！`);
-        
-        document.getElementById('daily-qty').value = '';
-        document.getElementById('daily-reason').value = '';
-      }).saveDailyRecord(payload);
+        btn.disabled = false; btn.textContent = '削除';
+        if(res.success) { alert("削除が完了しました。"); reloadDailyRecordsList(); clearDailyForm(); }
+      }).deleteDailyRecord(currentDailyKey);
     }
 
-    function updateEditDropdowns() {
-      let matHtml = '<option value="">選択してください</option>';
-      let srcHtml = '<option value="">選択してください</option>';
-      masterDataList.forEach(item => {
-        const mark = item.isHidden ? ' ⚠️(非表示)' : '';
-        if (item.type === '原料') matHtml += `<option value="${item.cd}">${item.name}${mark}</option>`;
-        if (item.type === 'ソース') srcHtml += `<option value="${item.cd}">${item.name}${mark}</option>`;
-      });
-      document.getElementById('edit-mat-cd').innerHTML = matHtml;
-      document.getElementById('edit-source-cd').innerHTML = srcHtml;
-      
-      document.querySelectorAll('.ingredient-cd').forEach(sel => {
-        const rowType = sel.closest('.ingredient-row').querySelector('select').value;
-        const currentVal = sel.value;
-        sel.innerHTML = buildOptionsHTML(rowType);
-        sel.value = currentVal; 
-      });
+    // --- マスター全般 ---
+    function loadMasterData() {
+      google.script.run.withSuccessHandler(function(list) {
+        masterDataList = list;
+        addIngredientRow('ingredient-list');
+        addIngredientRow('source-ingredient-list');
+        updateEditDropdowns();
+        updateDailyDropdowns(); 
+      }).getIngredientMaster();
+      fetchNextCd(); fetchNextMaterialCd(); fetchNextSourceCd(); loadProductList(); 
     }
 
-    function buildOptionsHTML(filterType) {
-      let html = '<option value="">選択してください</option>';
-      masterDataList.forEach(item => {
-        if (!item.isHidden) {
-          if (filterType === 'all' || item.type === filterType) {
-            html += `<option value="${item.cd}">[${item.type}] ${item.name}</option>`;
-          }
-        }
-      });
-      return html;
+    function loadProductList() {
+      google.script.run.withSuccessHandler(function(list) {
+        productDataList = list;
+        let html = '<option value="">選択してください</option>';
+        list.forEach(item => { const mark = item.isHidden ? ' ⚠️(非表示)' : ''; html += `<option value="${item.cd}">${item.name}${mark}</option>`; });
+        document.getElementById('edit-product-cd').innerHTML = html;
+        updateDailyDropdowns(); 
+      }).getProductList();
     }
 
     function changeMasterView() {
@@ -348,6 +488,7 @@
       document.getElementById('view-product').classList.add('hidden');
       document.getElementById('view-source').classList.add('hidden');
       document.getElementById('view-material').classList.add('hidden');
+      document.getElementById('view-user').classList.add('hidden'); // ★追加
 
       if (master === 'product') {
         document.getElementById('view-product').classList.remove('hidden');
@@ -382,209 +523,195 @@
           editSelect.classList.add('hidden'); saveBtn.textContent = '原料を新規登録する';
           fetchNextMaterialCd(); clearMatForm();
         }
+      } else if (master === 'user') { // ★ユーザーマスタ処理追加
+        document.getElementById('view-user').classList.remove('hidden');
+        const editSelect = document.getElementById('user-edit-select');
+        const saveBtn = document.getElementById('user-save-btn');
+        if (action === 'edit') {
+          editSelect.classList.remove('hidden'); saveBtn.textContent = 'ユーザーを上書き保存する';
+          clearUserForm();
+        } else {
+          editSelect.classList.add('hidden'); saveBtn.textContent = 'ユーザーを新規登録する';
+          clearUserForm();
+        }
       }
     }
 
-    function fetchNextCd() {
-      document.getElementById('recipe-cd').value = '読込中...';
-      google.script.run.withSuccessHandler(function(nextCd) {
-        currentProductCd = nextCd; document.getElementById('recipe-cd').value = nextCd;
-      }).getNextProductCd();
+    // --- ユーザーマスタ処理 ---
+    function clearUserForm() {
+      document.getElementById('user-id').value = '';
+      document.getElementById('user-name').value = '';
+      document.getElementById('user-pass').value = '';
+      const action = document.getElementById('action-type').value;
+      document.getElementById('user-id').readOnly = (action === 'edit');
+      if(action==='edit') document.getElementById('user-id').classList.add('bg-gray-100');
+      else document.getElementById('user-id').classList.remove('bg-gray-100');
     }
-    function clearProductForm() {
-      document.getElementById('recipe-name').value = ''; document.getElementById('recipe-price').value = ''; document.getElementById('recipe-displayFlag').value = '';
+    
+    function loadUserDetail() {
+      const id = document.getElementById('edit-user-id').value;
+      if (!id) { clearUserForm(); return; }
+      google.script.run.withSuccessHandler(function(detail) {
+        if(detail) {
+          document.getElementById('user-id').value = detail.id;
+          document.getElementById('user-name').value = detail.name;
+          document.getElementById('user-pass').value = detail.pass;
+        }
+      }).getUserDetail(id);
     }
+    
+    function submitUser() {
+      const action = document.getElementById('action-type').value;
+      const id = document.getElementById('user-id').value;
+      if (action === 'edit' && !id) { alert("編集するユーザーを選択してください。"); return; }
+      const name = document.getElementById('user-name').value;
+      const pass = document.getElementById('user-pass').value;
+      if(!id || !name || !pass) { alert("全ての項目を入力してください。"); return; }
+      
+      const payload = { mode: action, id: id, name: name, pass: pass };
+      const btn = document.getElementById('user-save-btn');
+      btn.disabled = true; btn.textContent = '保存中...';
+      
+      google.script.run.withSuccessHandler(function(res) {
+        btn.disabled = false; btn.textContent = action === 'new' ? 'ユーザーを新規登録する' : 'ユーザーを上書き保存する';
+        alert("ユーザー情報を保存しました。");
+        clearUserForm();
+        reloadUserDropdown(); 
+      }).saveUser(payload);
+    }
+
+    // --- その他マスター処理群 (既存ロジックそのまま) ---
+    function updateEditDropdowns() {
+      let matHtml = '<option value="">選択してください</option>'; let srcHtml = '<option value="">選択してください</option>';
+      masterDataList.forEach(item => {
+        const mark = item.isHidden ? ' ⚠️(非表示)' : '';
+        if (item.type === '原料') matHtml += `<option value="${item.cd}">${item.name}${mark}</option>`;
+        if (item.type === 'ソース') srcHtml += `<option value="${item.cd}">${item.name}${mark}</option>`;
+      });
+      document.getElementById('edit-mat-cd').innerHTML = matHtml; document.getElementById('edit-source-cd').innerHTML = srcHtml;
+      document.querySelectorAll('.ingredient-cd').forEach(sel => {
+        const rowType = sel.closest('.ingredient-row').querySelector('select').value;
+        const currentVal = sel.value; sel.innerHTML = buildOptionsHTML(rowType); sel.value = currentVal; 
+      });
+    }
+    function buildOptionsHTML(filterType) {
+      let html = '<option value="">選択してください</option>';
+      masterDataList.forEach(item => { if (!item.isHidden) { if (filterType === 'all' || item.type === filterType) { html += `<option value="${item.cd}">[${item.type}] ${item.name}</option>`; } } });
+      return html;
+    }
+    function addIngredientRow(containerId, initialCd = '', initialAmount = '') {
+      const container = document.getElementById(containerId); const row = document.createElement('div'); row.className = 'flex gap-2 items-center bg-gray-50 p-2 border rounded ingredient-row';
+      row.innerHTML = `<div class="w-24"><select class="w-full p-2 border rounded bg-gray-200 text-xs" onchange="changeFilter(this)"><option value="all">すべて</option><option value="ソース">ソース</option><option value="原料">原料</option></select></div><div class="flex-1"><select class="w-full p-2 border rounded bg-white ingredient-cd">${buildOptionsHTML('all')}</select></div><div class="w-24"><input type="number" class="w-full p-2 border rounded ingredient-amount" placeholder="g/ml" value="${initialAmount}"></div><button onclick="this.parentElement.remove()" class="text-red-500 font-bold px-2 rounded">×</button>`;
+      if (initialCd) { setTimeout(() => { row.querySelector('.ingredient-cd').value = initialCd; }, 100); }
+      container.appendChild(row);
+    }
+    function changeFilter(sel) { sel.closest('.ingredient-row').querySelector('.ingredient-cd').innerHTML = buildOptionsHTML(sel.value); }
+    function fetchNextCd() { document.getElementById('recipe-cd').value = '読込中...'; google.script.run.withSuccessHandler(function(nextCd) { currentProductCd = nextCd; document.getElementById('recipe-cd').value = nextCd; }).getNextProductCd(); }
+    function clearProductForm() { document.getElementById('recipe-name').value = ''; document.getElementById('recipe-price').value = ''; document.getElementById('recipe-displayFlag').value = ''; }
     function loadProductDetail() {
-      const cd = document.getElementById('edit-product-cd').value;
-      if (!cd) { clearProductForm(); document.getElementById('ingredient-list').innerHTML = ''; return; }
+      const cd = document.getElementById('edit-product-cd').value; if (!cd) { clearProductForm(); document.getElementById('ingredient-list').innerHTML = ''; return; }
       currentProductCd = cd; document.getElementById('recipe-cd').value = cd;
       google.script.run.withSuccessHandler(function(detail) {
         if(detail) {
           document.getElementById('recipe-name').value = detail.name; document.getElementById('recipe-price').value = detail.price; document.getElementById('recipe-displayFlag').value = detail.displayFlag;
           const container = document.getElementById('ingredient-list'); container.innerHTML = '';
-          if (detail.ingredients && detail.ingredients.length > 0) {
-            detail.ingredients.forEach(ing => { addIngredientRow('ingredient-list', ing.cd, ing.amount); });
-          } else { addIngredientRow('ingredient-list'); }
+          if (detail.ingredients && detail.ingredients.length > 0) { detail.ingredients.forEach(ing => { addIngredientRow('ingredient-list', ing.cd, ing.amount); }); } else { addIngredientRow('ingredient-list'); }
         }
       }).getProductDetail(cd);
     }
     function submitRecipe() {
-      const action = document.getElementById('action-type').value;
-      if (action === 'edit' && !currentProductCd) { alert("編集する製品を選択してください。"); return; }
-      const name = document.getElementById('recipe-name').value;
-      const price = document.getElementById('recipe-price').value;
-      const displayFlag = document.getElementById('recipe-displayFlag').value;
+      const action = document.getElementById('action-type').value; if (action === 'edit' && !currentProductCd) { alert("編集する製品を選択してください。"); return; }
+      const name = document.getElementById('recipe-name').value; const price = document.getElementById('recipe-price').value; const displayFlag = document.getElementById('recipe-displayFlag').value;
       if(!name || !price) { alert("製品名と販売価格を入力してください。"); return; }
-      const rows = document.querySelectorAll('#ingredient-list .ingredient-row');
-      let ingredients = [];
-      rows.forEach(row => {
-        const ingCd = row.querySelector('.ingredient-cd').value; const amount = row.querySelector('.ingredient-amount').value;
-        if(ingCd && amount) ingredients.push({ cd: ingCd, amount: Number(amount) });
-      });
+      const rows = document.querySelectorAll('#ingredient-list .ingredient-row'); let ingredients = [];
+      rows.forEach(row => { const ingCd = row.querySelector('.ingredient-cd').value; const amount = row.querySelector('.ingredient-amount').value; if(ingCd && amount) ingredients.push({ cd: ingCd, amount: Number(amount) }); });
       if(ingredients.length === 0) { alert("原料を入力してください。"); return; }
       const payload = { mode: action, productCd: currentProductCd, productName: name, price: Number(price), displayFlag: displayFlag, ingredients: ingredients };
       const btn = document.getElementById('recipe-save-btn'); btn.disabled = true; btn.textContent = "保存中...";
       google.script.run.withSuccessHandler(function(res) {
-        btn.disabled = false; btn.textContent = res.mode === 'new' ? 'かき氷を新規登録する' : 'かき氷を上書き保存する';
-        alert(`保存が完了しました！`); clearProductForm(); document.getElementById('ingredient-list').innerHTML = ''; addIngredientRow('ingredient-list');
-        if (res.mode === 'new') fetchNextCd(); loadProductList(); 
+        btn.disabled = false; btn.textContent = res.mode === 'new' ? 'かき氷を新規登録する' : 'かき氷を上書き保存する'; alert(`保存が完了しました！`); clearProductForm(); document.getElementById('ingredient-list').innerHTML = ''; addIngredientRow('ingredient-list'); if (res.mode === 'new') fetchNextCd(); loadProductList(); 
       }).saveRecipe(payload);
     }
-
-    function fetchNextSourceCd() {
-      document.getElementById('source-cd-display').value = '読込中...';
-      google.script.run.withSuccessHandler(function(nextCd) {
-        currentSourceCd = nextCd; document.getElementById('source-cd-display').value = nextCd;
-      }).getNextSourceCd();
-    }
-    function clearSourceForm() {
-      document.getElementById('source-name').value = ''; document.getElementById('source-yield').value = ''; document.getElementById('source-displayFlag').value = '';
-    }
+    function fetchNextSourceCd() { document.getElementById('source-cd-display').value = '読込中...'; google.script.run.withSuccessHandler(function(nextCd) { currentSourceCd = nextCd; document.getElementById('source-cd-display').value = nextCd; }).getNextSourceCd(); }
+    function clearSourceForm() { document.getElementById('source-name').value = ''; document.getElementById('source-yield').value = ''; document.getElementById('source-displayFlag').value = ''; }
     function loadSourceDetail() {
-      const cd = document.getElementById('edit-source-cd').value;
-      if (!cd) { clearSourceForm(); document.getElementById('source-ingredient-list').innerHTML = ''; return; }
+      const cd = document.getElementById('edit-source-cd').value; if (!cd) { clearSourceForm(); document.getElementById('source-ingredient-list').innerHTML = ''; return; }
       currentSourceCd = cd; document.getElementById('source-cd-display').value = cd;
       google.script.run.withSuccessHandler(function(detail) {
         if(detail) {
           document.getElementById('source-name').value = detail.name; document.getElementById('source-yield').value = detail.yieldAmount; document.getElementById('source-displayFlag').value = detail.displayFlag;
           const container = document.getElementById('source-ingredient-list'); container.innerHTML = '';
-          if (detail.ingredients && detail.ingredients.length > 0) {
-            detail.ingredients.forEach(ing => { addIngredientRow('source-ingredient-list', ing.cd, ing.amount); });
-          } else { addIngredientRow('source-ingredient-list'); }
+          if (detail.ingredients && detail.ingredients.length > 0) { detail.ingredients.forEach(ing => { addIngredientRow('source-ingredient-list', ing.cd, ing.amount); }); } else { addIngredientRow('source-ingredient-list'); }
         }
       }).getSourceDetail(cd);
     }
     function submitSource() {
-      const action = document.getElementById('action-type').value;
-      if (action === 'edit' && !currentSourceCd) { alert("編集するソースを選択してください。"); return; }
-      const name = document.getElementById('source-name').value; const yieldAmt = document.getElementById('source-yield').value;
-      if (!name || !yieldAmt) { alert("ソース名と出来上がり量を入力してください。"); return; }
-      const rows = document.querySelectorAll('#source-ingredient-list .ingredient-row');
-      let ingredients = [];
-      rows.forEach(row => {
-        const ingCd = row.querySelector('.ingredient-cd').value; const amount = row.querySelector('.ingredient-amount').value;
-        if(ingCd && amount) ingredients.push({ cd: ingCd, amount: Number(amount) });
-      });
+      const action = document.getElementById('action-type').value; if (action === 'edit' && !currentSourceCd) { alert("編集するソースを選択してください。"); return; }
+      const name = document.getElementById('source-name').value; const yieldAmt = document.getElementById('source-yield').value; if (!name || !yieldAmt) { alert("ソース名と出来上がり量を入力してください。"); return; }
+      const rows = document.querySelectorAll('#source-ingredient-list .ingredient-row'); let ingredients = [];
+      rows.forEach(row => { const ingCd = row.querySelector('.ingredient-cd').value; const amount = row.querySelector('.ingredient-amount').value; if(ingCd && amount) ingredients.push({ cd: ingCd, amount: Number(amount) }); });
       if(ingredients.length === 0) { alert("原料を1つ以上入力してください。"); return; }
       const payload = { mode: action, sourceCd: currentSourceCd, sourceName: name, yieldAmount: Number(yieldAmt), displayFlag: document.getElementById('source-displayFlag').value, ingredients: ingredients };
       const btn = document.getElementById('source-save-btn'); btn.disabled = true; btn.textContent = '保存中...';
       google.script.run.withSuccessHandler(function(res) {
-        btn.disabled = false; btn.textContent = res.mode === 'new' ? 'ソースを新規登録する' : 'ソースを上書き保存する';
-        alert("ソースの保存が完了しました！"); clearSourceForm(); document.getElementById('source-ingredient-list').innerHTML = ''; addIngredientRow('source-ingredient-list');
-        if (res.mode === 'new') fetchNextSourceCd();
-        google.script.run.withSuccessHandler(function(list) { masterDataList = list; updateEditDropdowns(); updateDailyDropdowns(); }).getIngredientMaster();
+        btn.disabled = false; btn.textContent = res.mode === 'new' ? 'ソースを新規登録する' : 'ソースを上書き保存する'; alert("ソースの保存が完了しました！"); clearSourceForm(); document.getElementById('source-ingredient-list').innerHTML = ''; addIngredientRow('source-ingredient-list'); if (res.mode === 'new') fetchNextSourceCd(); google.script.run.withSuccessHandler(function(list) { masterDataList = list; updateEditDropdowns(); updateDailyDropdowns(); }).getIngredientMaster();
       }).saveSource(payload);
     }
-
-    function addIngredientRow(containerId, initialCd = '', initialAmount = '') {
-      const container = document.getElementById(containerId);
-      const row = document.createElement('div');
-      row.className = 'flex gap-2 items-center bg-gray-50 p-2 border rounded ingredient-row';
-      row.innerHTML = `
-        <div class="w-24"><select class="w-full p-2 border rounded bg-gray-200 text-xs" onchange="changeFilter(this)"><option value="all">すべて</option><option value="ソース">ソース</option><option value="原料">原料</option></select></div>
-        <div class="flex-1"><select class="w-full p-2 border rounded bg-white ingredient-cd">${buildOptionsHTML('all')}</select></div>
-        <div class="w-24"><input type="number" class="w-full p-2 border rounded ingredient-amount" placeholder="g/ml" value="${initialAmount}"></div>
-        <button onclick="this.parentElement.remove()" class="text-red-500 font-bold px-2 rounded">×</button>`;
-      if (initialCd) { setTimeout(() => { row.querySelector('.ingredient-cd').value = initialCd; }, 100); }
-      container.appendChild(row);
-    }
-
-    function changeFilter(sel) {
-      sel.closest('.ingredient-row').querySelector('.ingredient-cd').innerHTML = buildOptionsHTML(sel.value);
-    }
-
     function loadMaterialDetail() {
-      const cd = document.getElementById('edit-mat-cd').value;
-      if (!cd) { clearMatForm(); return; }
+      const cd = document.getElementById('edit-mat-cd').value; if (!cd) { clearMatForm(); return; }
       currentMatCd = cd; document.getElementById('mat-cd-display').value = cd;
       google.script.run.withSuccessHandler(function(detail) {
-        if(detail) {
-          document.getElementById('mat-name').value = detail.name; document.getElementById('mat-kikaku').value = detail.kikaku;
-          document.getElementById('mat-unit').value = detail.unit; document.getElementById('mat-priceEx').value = detail.priceEx;
-          document.getElementById('mat-supplier').value = detail.supplier; document.getElementById('mat-memo').value = detail.memo;
-          document.getElementById('mat-displayFlag').value = detail.displayFlag;
-        }
+        if(detail) { document.getElementById('mat-name').value = detail.name; document.getElementById('mat-kikaku').value = detail.kikaku; document.getElementById('mat-unit').value = detail.unit; document.getElementById('mat-priceEx').value = detail.priceEx; document.getElementById('mat-supplier').value = detail.supplier; document.getElementById('mat-memo').value = detail.memo; document.getElementById('mat-displayFlag').value = detail.displayFlag; }
       }).getMaterialDetail(cd);
     }
-
-    function clearMatForm() {
-      document.getElementById('mat-name').value = ''; document.getElementById('mat-kikaku').value = '';
-      document.getElementById('mat-unit').value = ''; document.getElementById('mat-priceEx').value = '';
-      document.getElementById('mat-supplier').value = ''; document.getElementById('mat-memo').value = '';
-      document.getElementById('mat-displayFlag').value = '';
-    }
-
-    function fetchNextMaterialCd() {
-      document.getElementById('mat-cd-display').value = '読込中...';
-      google.script.run.withSuccessHandler(function(nextCd) {
-        currentMatCd = nextCd; document.getElementById('mat-cd-display').value = nextCd;
-      }).getNextMaterialCd();
-    }
-
+    function clearMatForm() { document.getElementById('mat-name').value = ''; document.getElementById('mat-kikaku').value = ''; document.getElementById('mat-unit').value = ''; document.getElementById('mat-priceEx').value = ''; document.getElementById('mat-supplier').value = ''; document.getElementById('mat-memo').value = ''; document.getElementById('mat-displayFlag').value = ''; }
+    function fetchNextMaterialCd() { document.getElementById('mat-cd-display').value = '読込中...'; google.script.run.withSuccessHandler(function(nextCd) { currentMatCd = nextCd; document.getElementById('mat-cd-display').value = nextCd; }).getNextMaterialCd(); }
     function submitMaterial() {
-      const action = document.getElementById('action-type').value;
-      if (action === 'edit' && !currentMatCd) { alert("編集する原料を選択してください。"); return; }
-      const payload = {
-        mode: action, cd: currentMatCd, name: document.getElementById('mat-name').value,
-        kikaku: document.getElementById('mat-kikaku').value, unit: document.getElementById('mat-unit').value,
-        priceEx: Number(document.getElementById('mat-priceEx').value), supplier: document.getElementById('mat-supplier').value,
-        memo: document.getElementById('mat-memo').value, displayFlag: document.getElementById('mat-displayFlag').value
-      };
+      const action = document.getElementById('action-type').value; if (action === 'edit' && !currentMatCd) { alert("編集する原料を選択してください。"); return; }
+      const payload = { mode: action, cd: currentMatCd, name: document.getElementById('mat-name').value, kikaku: document.getElementById('mat-kikaku').value, unit: document.getElementById('mat-unit').value, priceEx: Number(document.getElementById('mat-priceEx').value), supplier: document.getElementById('mat-supplier').value, memo: document.getElementById('mat-memo').value, displayFlag: document.getElementById('mat-displayFlag').value };
       if (!payload.name) { alert("原料名を入力してください。"); return; }
       const btn = document.getElementById('mat-save-btn'); btn.disabled = true; btn.textContent = '保存中...';
-
       google.script.run.withSuccessHandler(function(res) {
-        btn.disabled = false; btn.textContent = res.mode === 'new' ? '原料を新規登録する' : '上書き保存する';
-        alert("保存が完了しました！"); clearMatForm();
-        if (res.mode === 'new') fetchNextMaterialCd();
-        google.script.run.withSuccessHandler(function(list) { masterDataList = list; updateEditDropdowns(); updateDailyDropdowns(); }).getIngredientMaster();
+        btn.disabled = false; btn.textContent = res.mode === 'new' ? '原料を新規登録する' : '上書き保存する'; alert("保存が完了しました！"); clearMatForm(); if (res.mode === 'new') fetchNextMaterialCd(); google.script.run.withSuccessHandler(function(list) { masterDataList = list; updateEditDropdowns(); updateDailyDropdowns(); }).getIngredientMaster();
       }).saveMaterial(payload);
     }
-
     function attemptLogin() {
-      const id = document.getElementById('login-id').value;
-      const pass = document.getElementById('login-pass').value;
-      const btn = document.getElementById('login-btn');
-      const err = document.getElementById('login-error');
-      
-      // ★修正：IDが選択されていない場合のアラート
-      if (!id) {
-        alert("ログインIDを選択してください。");
-        return;
-      }
-      if (!pass) return;
-      
+      const id = document.getElementById('login-id').value; const pass = document.getElementById('login-pass').value;
+      const btn = document.getElementById('login-btn'); const err = document.getElementById('login-error');
+      if (!id) { alert("ログインIDを選択してください。"); return; } if (!pass) return;
       btn.disabled = true; btn.textContent = '確認中...';
       google.script.run.withSuccessHandler(function(res) {
         btn.disabled = false; btn.textContent = 'ログイン';
         if (res.success) {
-          document.getElementById('staff-name-display').textContent = res.staffName;
-          document.getElementById('daily-staff').value = res.staffName; 
-          
-          document.getElementById('login-view').classList.add('hidden');
-          document.getElementById('app-view').classList.remove('hidden');
-          
-          setTodayDate(); 
-          loadMasterData();
-          switchTab('daily');
+          document.getElementById('staff-name-display').textContent = res.staffName; document.getElementById('daily-staff').value = res.staffName; 
+          document.getElementById('login-view').classList.add('hidden'); document.getElementById('app-view').classList.remove('hidden');
+          setTodayDate(); loadMasterData();
+          // ★ログイン後は「メインメニュー」を表示
+          document.getElementById('content-menu').classList.remove('hidden');
+          document.getElementById('content-daily').classList.add('hidden');
+          document.getElementById('content-recipe').classList.add('hidden');
         } else { err.textContent = res.message; err.classList.remove('hidden'); }
       }).checkLogin(id, pass);
     }
     
-    function logout() { location.reload(); }
-    
-    function switchTab(tabName) {
-      const tDaily = document.getElementById('tab-daily'), tRecipe = document.getElementById('tab-recipe');
-      const cDaily = document.getElementById('content-daily'), cRecipe = document.getElementById('content-recipe');
-      if (tabName === 'daily') {
-        tDaily.className = 'flex-1 py-3 text-center tab-active transition text-blue-600 border-b-4 border-blue-600'; 
-        tRecipe.className = 'flex-1 py-3 text-center tab-inactive transition text-gray-500 border-b-4 border-transparent hover:bg-gray-50';
-        cDaily.classList.remove('hidden'); cRecipe.classList.add('hidden');
-      } else {
-        tDaily.className = 'flex-1 py-3 text-center tab-inactive transition text-gray-500 border-b-4 border-transparent hover:bg-gray-50'; 
-        tRecipe.className = 'flex-1 py-3 text-center tab-active transition text-blue-600 border-b-4 border-blue-600';
-        cDaily.classList.add('hidden'); cRecipe.classList.remove('hidden');
-      }
+    function logout() {
+      // 1. ログイン入力欄とエラーメッセージをクリア
+      document.getElementById('login-id').value = '';
+      document.getElementById('login-pass').value = '';
+      document.getElementById('login-error').classList.add('hidden');
+      
+      // 2. スタッフ名の表示をクリア
+      document.getElementById('staff-name-display').textContent = '';
+      document.getElementById('daily-staff').value = '';
+      
+      // 3. アプリ画面を隠して、ログイン画面を表示
+      document.getElementById('app-view').classList.add('hidden');
+      document.getElementById('login-view').classList.remove('hidden');
+      
+      // 4. 次回ログイン時のために、裏側をメインメニュー画面に戻しておく
+      document.getElementById('content-menu').classList.remove('hidden');
+      document.getElementById('content-daily').classList.add('hidden');
+      document.getElementById('content-recipe').classList.add('hidden');
     }
   </script>
 </body>
