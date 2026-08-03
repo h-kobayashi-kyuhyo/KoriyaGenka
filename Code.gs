@@ -486,3 +486,72 @@ function getProductList() {
   }
   return list;
 }
+
+/**
+ * ===================================================
+ * 【日次業務（廃棄・試食登録）用】の追加関数
+ * ===================================================
+ */
+
+/**
+ * 日次業務の記録を保存する関数
+ */
+function saveDailyRecord(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('t_daily_record');
+  
+  // もしシートが無ければ自動で作成し、ヘッダーをセットする親切設計
+  if (!sheet) {
+    sheet = ss.insertSheet('t_daily_record');
+    sheet.appendRow(['システム登録日時', '対象日付', '登録者', '区分', 'マスター種別', 'アイテムCD', 'アイテム名', '数量', '理由']);
+    sheet.getRange("A1:I1").setFontWeight("bold").setBackground("#e2e8f0");
+  }
+  
+  // タイムスタンプ（現在時刻）
+  const timestamp = new Date();
+  
+  // データをシートの最終行に追記（アペンド）
+  sheet.appendRow([
+    timestamp,
+    data.date,
+    data.staffName,
+    data.category,
+    data.itemType,
+    data.itemCd,
+    data.itemName,
+    data.quantity,
+    data.reason
+  ]);
+  
+  return { success: true };
+}
+
+/**
+ * ===================================================
+ * 【ログイン画面用】の追加関数
+ * ===================================================
+ */
+
+/**
+ * m_userシートからログインIDのリストを取得する関数
+ */
+function getUserList() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  
+  if (!sheet) return [];
+  
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return [];
+  
+  const ids = [];
+  // A列（ID）を取得
+  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  data.forEach(row => {
+    if (row[0]) {
+      ids.push(row[0]);
+    }
+  });
+  
+  return ids;
+}
