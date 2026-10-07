@@ -30,35 +30,27 @@ function checkLogin(inputId, inputPass) {
  */
 function getIngredientMaster() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let list = [];
+  const list = [];
   
-  // 原料（m_material）の処理
-  const matSheet = ss.getSheetByName('m_material');
-  if (matSheet) {
-    const lastRow = getRealLastRow(matSheet, 1);
-    if (lastRow > 1) {
-      const matData = matSheet.getRange(2, 1, lastRow - 1, 10).getValues();
-      matData.forEach(row => {
-        if (row[0]) {
-          // row[9]（J列）が空白でない場合は「isHidden: true」という目印をつける
-          list.push({ cd: row[0], name: row[1], type: '原料', isHidden: row[9] !== "" });
-        }
-      });
+  const sSheet = ss.getSheetByName('m_source');
+  if (sSheet) {
+    const sData = sSheet.getDataRange().getValues();
+    for (let i = 1; i < sData.length; i++) {
+      if (sData[i][0]) {
+        list.push({ cd: sData[i][0], name: sData[i][1], type: 'ソース', isHidden: (sData[i][9] == 99), category: '食品' });
+      }
     }
   }
   
-  // ソース（m_source）の処理
-  const srcSheet = ss.getSheetByName('m_source');
-  if (srcSheet) {
-    const lastRow = getRealLastRow(srcSheet, 1);
-    if (lastRow > 1) {
-      const srcData = srcSheet.getRange(2, 1, lastRow - 1, 6).getValues();
-      srcData.forEach(row => {
-        if (row[0]) {
-          // row[5]（F列）が空白でない場合は「isHidden: true」という目印をつける
-          list.push({ cd: row[0], name: row[1], type: 'ソース', isHidden: row[5] !== "" });
-        }
-      });
+  const mSheet = ss.getSheetByName('m_material');
+  if (mSheet) {
+    const mData = mSheet.getDataRange().getValues();
+    for (let i = 1; i < mData.length; i++) {
+      if (mData[i][0]) {
+        // ★M列(13列目)をカテゴリとして取得（空欄の場合はデフォルトで食品）
+        const category = mData[i][12] || '食品'; 
+        list.push({ cd: mData[i][0], name: mData[i][1], type: '原料', isHidden: (mData[i][9] == 99), category: category });
+      }
     }
   }
   return list;
@@ -251,11 +243,12 @@ function getNextMaterialCd() {
 function getMaterialDetail(cd) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('m_material');
+  if (!sheet) return null;
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return null;
   
-  // J列（10列目）まで取得する
-  const data = sheet.getRange(1, 1, lastRow, 10).getValues();
+  // ★L列（12列目）まで取得する
+  const data = sheet.getRange(1, 1, lastRow, 13).getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === cd) {
       return {
@@ -266,7 +259,10 @@ function getMaterialDetail(cd) {
         priceEx: data[i][4],   
         supplier: data[i][5],  
         memo: data[i][6],      
-        displayFlag: data[i][9] // J列: 表示区分を追加
+        displayFlag: data[i][9], 
+        zaicoCd: data[i][10],     
+        zaicoConv: data[i][11],   // ★L列: Zaico換算値
+        category: data[i][12]||'食品'
       };
     }
   }
@@ -279,15 +275,19 @@ function getMaterialDetail(cd) {
 function saveMaterial(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('m_material');
+  const zaicoConv = data.zaicoConv ? Number(data.zaicoConv) : 1;
+  const safeZaicoCd = data.zaicoCd ? "'" + data.zaicoCd : "";
+  const category = data.category || '食品'; // ★追加
   
   if (data.mode === 'new') {
     const nextRow = getRealLastRow(sheet, 1) + 1;
     const formulaH = `=IF(E${nextRow}="","",E${nextRow}*1.08)`;
     const formulaI = `=IF(E${nextRow}="","",E${nextRow}/C${nextRow})`;
     
+    // ★M列目（13番目）に category を追加
     const rowData = [
       data.cd, data.name, data.kikaku, data.unit, data.priceEx, 
-      data.supplier, data.memo, formulaH, formulaI, data.displayFlag
+      data.supplier, data.memo, formulaH, formulaI, data.displayFlag, safeZaicoCd, zaicoConv, category
     ];
     sheet.getRange(nextRow, 1, 1, rowData.length).setValues([rowData]);
     
@@ -302,12 +302,13 @@ function saveMaterial(data) {
       }
     }
     if (targetRow !== -1) {
-      // B〜G列を上書き
       sheet.getRange(targetRow, 2, 1, 6).setValues([[
         data.name, data.kikaku, data.unit, data.priceEx, data.supplier, data.memo
       ]]);
-      // J列（10列目）の表示区分を個別に上書き
       sheet.getRange(targetRow, 10).setValue(data.displayFlag);
+      sheet.getRange(targetRow, 11).setValue(safeZaicoCd);
+      sheet.getRange(targetRow, 12).setValue(zaicoConv); 
+      sheet.getRange(targetRow, 13).setValue(category); // ★M列を上書き
     }
   }
   return { success: true, mode: data.mode, generatedCd: data.cd };
@@ -699,4 +700,216 @@ function deleteDailyRecord(rowNumStr) {
   sheet.deleteRow(rowNum); // 指定された行をズバッと削除
   
   return { success: true };
+}
+
+/**
+ * ===================================================
+ * 【売上CSV取り込み機能】（月次・商品別集計版）
+ * ===================================================
+ */
+function uploadSalesCsv(csvText) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('t_sales_record');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('t_sales_record');
+    sheet.appendRow(['システム取込日時', '取引日(月初)', '商品名', '製品CD', '数量', '1個あたり原価', '原価合計']);
+    sheet.getRange("A1:G1").setFontWeight("bold").setBackground("#e2e8f0");
+  }
+  
+  // 製品マスター（m_product）を読み込んで辞書を作る
+  const pSheet = ss.getSheetByName('m_product');
+  let productMaster = {};
+  if (pSheet) {
+    const pLastRow = getRealLastRow(pSheet, 1);
+    if (pLastRow >= 2) {
+      // A列:CD, B列:製品名, D列:原価
+      const pData = pSheet.getRange(2, 1, pLastRow - 1, 4).getValues();
+      pData.forEach(row => {
+        if (row[0] && row[1]) {
+          productMaster[row[1]] = { cd: row[0], cost: row[3] || 0 };
+        }
+      });
+    }
+  }
+
+  try {
+    const data = Utilities.parseCsv(csvText);
+    const timestamp = new Date();
+    
+    // ★集計用オブジェクト（辞書）
+    const aggregated = {};
+    
+    // i=1 (2行目) からスタート
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row.length > 18) {
+        const dateRaw = row[2];          // C列: 取引日
+        const nameVal = row[12];         // M列: 商品名
+        const qtyVal = Number(row[18]);  // S列: 数量
+        
+        if (dateRaw && nameVal && !isNaN(qtyVal) && qtyVal !== 0) {
+          // ★日付を「月初」に変換 (例: 2026/7/2 -> 2026/07/01)
+          const d = new Date(dateRaw);
+          if (isNaN(d.getTime())) continue; 
+          
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const firstDayStr = `${yyyy}/${mm}/01`; // 月初の日付
+          
+          // 「年月_商品名」を合体させて集計用のキーにする
+          const key = firstDayStr + "_" + nameVal;
+          
+          // 初めて出てきた商品の場合は、枠を作る
+          if (!aggregated[key]) {
+            let cd = "";
+            let cost = 0;
+            if (productMaster[nameVal]) {
+              cd = productMaster[nameVal].cd;
+              cost = productMaster[nameVal].cost;
+            }
+            aggregated[key] = {
+              month: firstDayStr,
+              name: nameVal,
+              cd: cd,
+              unitCost: cost,
+              qty: 0
+            };
+          }
+          // ★数量を足し算（Sumifの役割）
+          aggregated[key].qty += qtyVal;
+        }
+      }
+    }
+    
+    // 書き込み用配列の作成
+    const rowsToAppend = [];
+    for (const key in aggregated) {
+      const item = aggregated[key];
+      
+      // ★小数第1位に丸める
+      const unitCost = Number(item.unitCost.toFixed(1));
+      const totalCost = Number((item.unitCost * item.qty).toFixed(1));
+      
+      rowsToAppend.push([
+        timestamp, 
+        item.month, 
+        item.name, 
+        item.cd, 
+        item.qty, 
+        unitCost, 
+        totalCost
+      ]);
+    }
+    
+    // 一括でシートに書き込み
+    if (rowsToAppend.length > 0) {
+      const nextRow = getRealLastRow(sheet, 1) + 1;
+      sheet.getRange(nextRow, 1, rowsToAppend.length, 7).setValues(rowsToAppend);
+      
+      // ★F列（1個あたり原価）、G列（原価合計）の表示形式を小数第1位（0.0）に設定
+      sheet.getRange(nextRow, 6, rowsToAppend.length, 2).setNumberFormat("0.0");
+      
+      return { success: true, count: rowsToAppend.length };
+    } else {
+      return { success: false, message: "有効な売上データが見つかりませんでした。" };
+    }
+    
+  } catch (e) {
+    return { success: false, message: "CSVの解析に失敗しました。: " + e.message };
+  }
+}
+
+function getZaicoInventoryReport() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const zSheet = ss.getSheetByName('DB_zaico');
+  const mSheet = ss.getSheetByName('m_material');
+  
+  if (!zSheet || !mSheet) return { success: false, message: 'DB_zaico または m_material シートが見つかりません。' };
+  
+  // 1. 原料マスターの辞書作成
+  const mData = mSheet.getDataRange().getValues();
+  const matMap = {};
+  for (let i = 1; i < mData.length; i++) {
+    const zCdStr = String(mData[i][10] || '').trim(); // K列: ZaicoCD
+    
+    if (zCdStr) {
+      // ★カンマ(,)や読点(、)で区切られた複数のZaicoCDに対応する処理
+      const zCds = zCdStr.split(/[,、]/).map(s => s.trim()).filter(s => s !== "");
+      
+      zCds.forEach(zCd => {
+        matMap[zCd] = {
+          sysCd: mData[i][0],
+          sysName: mData[i][1],
+          unit: mData[i][3],
+          unitCost: Number(mData[i][8]) || 0,
+          zaicoConv: Number(mData[i][11]) || 1
+        };
+      });
+    }
+  }
+  
+  // 2. Zaicoデータの取得と最新日の特定
+  const zData = zSheet.getDataRange().getValues();
+  if (zData.length < 2) return { success: false, message: 'Zaicoデータがありません。' };
+  
+  let latestDate = 0;
+  for (let i = 1; i < zData.length; i++) {
+    if (zData[i][0]) {
+      const d = new Date(zData[i][0]).getTime();
+      if (d > latestDate) latestDate = d;
+    }
+  }
+  if (latestDate === 0) return { success: false, message: 'Zaicoデータに有効な日付がありません。' };
+  
+  // 3. 換算処理と計算
+  let totalValue = 0;
+  const reportList = [];
+  
+  for (let i = 1; i < zData.length; i++) {
+    const rowDate = new Date(zData[i][0]).getTime();
+    
+    if (rowDate === latestDate) {
+      const zCd = String(zData[i][1] || '').trim();
+      const zName = zData[i][2];
+      const stockQty = Number(zData[i][4]) || 0; // Zaicoの数量
+      
+      let matchStatus = false;
+      let sysCd = "-";
+      let sysName = zName;
+      let unitCost = 0;
+      let itemValue = 0;
+      let displayQty = stockQty;
+      
+      if (zCd && matMap[zCd]) {
+        matchStatus = true;
+        sysCd = matMap[zCd].sysCd;
+        sysName = matMap[zCd].sysName;
+        unitCost = matMap[zCd].unitCost;
+        
+        // ★換算値を使ってシステム単位の数量を算出
+        const conv = matMap[zCd].zaicoConv;
+        const sysQty = stockQty * conv; 
+        
+        itemValue = Math.round(unitCost * sysQty);
+        totalValue += itemValue;
+        
+        // 画面表示用（システム数量 + 小さくZaico数量）
+        displayQty = `${sysQty} ${matMap[zCd].unit} <br><span class="text-xs text-gray-400">(Zaico: ${stockQty} × ${conv})</span>`;
+      }
+      
+      reportList.push({
+        match: matchStatus,
+        zaicoCd: zCd,
+        sysCd: sysCd,
+        name: sysName,
+        qtyHtml: displayQty, // HTMLとして渡す
+        unitCost: unitCost.toFixed(1),
+        itemValue: itemValue
+      });
+    }
+  }
+  
+  const dateStr = Utilities.formatDate(new Date(latestDate), Session.getScriptTimeZone(), 'yyyy/MM/dd');
+  return { success: true, targetDate: dateStr, totalValue: totalValue, list: reportList };
 }
