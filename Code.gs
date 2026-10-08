@@ -1,253 +1,67 @@
 /**
- * 1. ログイン処理
+ * ===================================================
+ * １．マスターデータ取得系（一覧・詳細・採番）
+ * ===================================================
  */
-function doGet() {
-  // index.html ファイルを読み込んでWebページとして出力
-  return HtmlService.createTemplateFromFile('index')
-      .evaluate()
-      .setTitle('廃棄・試食 登録システム')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1'); // スマホ対応用
-}
 
-
-function checkLogin(inputId, inputPass) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_user');
-  
-  if (!sheet) return { success: false, message: 'ユーザー管理シート(m_user)が見つかりません。' };
-  
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === inputId && String(data[i][1]) === inputPass) {
-      return { success: true, staffName: data[i][2] };
-    }
-  }
-  return { success: false, message: 'IDまたはパスワードが間違っています。' };
-}
-
-/**
- * 2. プルダウン用のマスターデータ取得（全角「ｍ」対策＆安全版）
- */
+// --- マスター一覧の取得（レシピ・日次用） ---
 function getIngredientMaster() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const list = [];
+  let list = [];
   
+  // ソースデータの取得
   const sSheet = ss.getSheetByName('m_source');
   if (sSheet) {
     const sData = sSheet.getDataRange().getValues();
-    for (let i = 1; i < sData.length; i++) {
-      if (sData[i][0]) {
-        list.push({ cd: sData[i][0], name: sData[i][1], type: 'ソース', isHidden: (sData[i][9] == 99), category: '食品' });
+    for(let i = 1; i < sData.length; i++) {
+      if(sData[i][0]) {
+        // ソースはすべて「食品」扱い
+        list.push({ cd: sData[i][0], name: sData[i][1], type: 'ソース', isHidden: sData[i][3] == 99, category: '食品' });
       }
     }
   }
   
+  // 原料データの取得
   const mSheet = ss.getSheetByName('m_material');
   if (mSheet) {
     const mData = mSheet.getDataRange().getValues();
-    for (let i = 1; i < mData.length; i++) {
-      if (mData[i][0]) {
-        // ★M列(13列目)をカテゴリとして取得（空欄の場合はデフォルトで食品）
-        const category = mData[i][12] || '食品'; 
-        list.push({ cd: mData[i][0], name: mData[i][1], type: '原料', isHidden: (mData[i][9] == 99), category: category });
+    for(let i = 1; i < mData.length; i++) {
+      if(mData[i][0]) {
+        // M列（12番目）の分類。空欄は「食品」として扱う
+        const cat = mData[i][12] || '食品';
+        list.push({ cd: mData[i][0], name: mData[i][1], type: '原料', isHidden: mData[i][9] == 99, category: cat });
       }
     }
   }
   return list;
 }
-/**
- * 3. ★重要★ 本当の最終行を見つける裏技関数
- */
-function getRealLastRow(sheet, column) {
-  const data = sheet.getRange(1, column, sheet.getMaxRows(), 1).getValues();
-  for (let i = data.length - 1; i >= 0; i--) {
-    if (data[i][0] !== "") {
-      return i + 1;
-    }
-  }
-  return 1;
-}
 
-/**
- * 4. 次の製品CD（自動連番）を取得する関数
- */
-function getNextProductCd() {
+// --- 製品一覧の取得 ---
+function getProductList() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pSheet = ss.getSheetByName('m_product');
-  let newCd = "SE0001";
+  const sheet = ss.getSheetByName('m_product');
+  if (!sheet) return [];
   
-  if (pSheet) {
-    const lastRow = getRealLastRow(pSheet, 1);
-    if (lastRow > 1) {
-      const cdValues = pSheet.getRange(2, 1, lastRow - 1, 1).getValues();
-      let maxNum = 0;
-      cdValues.forEach(row => {
-        const cdStr = String(row[0]);
-        const numMatch = cdStr.match(/\d+/);
-        if (numMatch) {
-          const num = parseInt(numMatch[0], 10);
-          if (num > maxNum) maxNum = num;
-        }
-      });
-      newCd = "SE" + ("0000" + (maxNum + 1)).slice(-4);
-    }
-  }
-  return newCd;
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return [];
+  
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  return data.filter(row => row[0]).map(row => ({
+    cd: row[0],
+    name: row[1],
+    isHidden: row[5] == 99
+  }));
 }
 
-function getProductDetail(cd) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pSheet = ss.getSheetByName('m_product');
-  const rSheet = ss.getSheetByName('m_product_recipe'); 
-  
-  let parentData = null;
-  const pLastRow = getRealLastRow(pSheet, 1);
-  if (pLastRow >= 2) {
-    // ★F列（6列目）まで取得するように変更
-    const pValues = pSheet.getRange(1, 1, pLastRow, 6).getValues();
-    for (let i = 1; i < pValues.length; i++) {
-      if (pValues[i][0] === cd) {
-        parentData = {
-          cd: pValues[i][0],
-          name: pValues[i][1],       // B列: 製品名
-          price: pValues[i][2],      // C列: 販売価格
-          displayFlag: pValues[i][5] // ★F列(6番目): 表示区分
-        };
-        break;
-      }
-    }
-  }
-  
-  if (!parentData) return null;
-  
-  const ingredients = [];
-  const rLastRow = getRealLastRow(rSheet, 1);
-  if (rLastRow >= 2) {
-    const rValues = rSheet.getRange(1, 1, rLastRow, 4).getValues();
-    for (let i = 1; i < rValues.length; i++) {
-      if (rValues[i][0] === cd) {
-        ingredients.push({
-          cd: rValues[i][1],
-          amount: rValues[i][3]
-        });
-      }
-    }
-  }
-  
-  parentData.ingredients = ingredients;
-  return parentData;
-}
-
-
-/**
- * 5. レシピをスプレッドシートに保存する関数
- */
-function saveRecipe(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pSheet = ss.getSheetByName('m_product');
-  const rSheet = ss.getSheetByName('m_product_recipe');
-  
-  const targetCd = data.productCd;
-  
-  // 1. 親データ（m_product）の保存
-  if (data.mode === 'new') {
-    const pNextRow = getRealLastRow(pSheet, 1) + 1;
-    
-    // ★D列・E列の計算式を作成
-    const formulaD = `=IF(A${pNextRow}="","",SUMIFS(m_product_recipe!$E:$E,m_product_recipe!$A:$A,A${pNextRow}))`;
-    const formulaE = `=IFERROR(IF(A${pNextRow}="","",D${pNextRow}/C${pNextRow}),0)`;
-    
-    // ★A列〜F列（6列分）を一度に書き込み
-    pSheet.getRange(pNextRow, 1, 1, 6).setValues([[
-      targetCd, data.productName, data.price, formulaD, formulaE, data.displayFlag
-    ]]);
-    
-    // ★E列（5番目）を小数第1位のパーセント表示に設定
-    pSheet.getRange(pNextRow, 5).setNumberFormat("0.0%");
-    
-  } else {
-    // 【既存編集】上書き
-    const lastRow = getRealLastRow(pSheet, 1);
-    const cdValues = pSheet.getRange(1, 1, lastRow, 1).getValues();
-    let targetRow = -1;
-    for (let i = 0; i < cdValues.length; i++) {
-      if (cdValues[i][0] === targetCd) {
-        targetRow = i + 1;
-        break;
-      }
-    }
-    if (targetRow !== -1) {
-      pSheet.getRange(targetRow, 2).setValue(data.productName);  // B列: 製品名
-      pSheet.getRange(targetRow, 3).setValue(data.price);        // C列: 販売価格
-      pSheet.getRange(targetRow, 6).setValue(data.displayFlag);  // ★F列: 表示区分
-    }
-  }
-
-  // 2. 子データ（m_product_recipe）の保存
-  if (data.mode === 'edit') {
-    const rLastRow = getRealLastRow(rSheet, 1);
-    if (rLastRow > 1) {
-      const rData = rSheet.getRange(1, 1, rLastRow, 1).getValues();
-      for (let i = rData.length - 1; i >= 1; i--) {
-        if (rData[i][0] === targetCd) {
-          rSheet.deleteRow(i + 1);
-        }
-      }
-    }
-  }
-
-  let rNextRow = getRealLastRow(rSheet, 1) + 1;
-  const recipeData = [];
-  data.ingredients.forEach(item => {
-    const formulaC = `=IF(B${rNextRow}="","",IFERROR(XLOOKUP(B${rNextRow},m_source!$A:$A,m_source!$B:$B),XLOOKUP(B${rNextRow},m_material!$A:$A,m_material!$B:$B,"エラー")))`;
-    const formulaE = `=IF(B${rNextRow}="","",D${rNextRow}*IFERROR(XLOOKUP(B${rNextRow},m_source!$A:$A,m_source!E:E),XLOOKUP(B${rNextRow},m_material!$A:$A,m_material!$I:$I,0)))`;
-    recipeData.push([targetCd, item.cd, formulaC, item.amount, formulaE]);
-    rNextRow++;
-  });
-  
-  if (recipeData.length > 0) {
-    const startRow = getRealLastRow(rSheet, 1) + 1;
-    rSheet.getRange(startRow, 1, recipeData.length, 5).setValues(recipeData);
-    rSheet.getRange(startRow, 5, recipeData.length, 1).setNumberFormat("0.00");
-  }
-  
-  return { success: true, mode: data.mode, generatedCd: targetCd };
-}
-
-function getNextMaterialCd() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_material');
-  let newCd = "G0001";
-  
-  if (sheet) {
-    const lastRow = getRealLastRow(sheet, 1);
-    if (lastRow > 1) {
-      const cdValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-      let maxNum = 0;
-      cdValues.forEach(row => {
-        const cdStr = String(row[0]);
-        const numMatch = cdStr.match(/\d+/);
-        if (numMatch) {
-          const num = parseInt(numMatch[0], 10);
-          if (num > maxNum) maxNum = num;
-        }
-      });
-      newCd = "G" + ("0000" + (maxNum + 1)).slice(-4);
-    }
-  }
-  return newCd;
-}
-/**
- * 既存の原料データを編集のために取得する関数（単位追加版）
- */
+// --- 原料詳細の取得 ---
 function getMaterialDetail(cd) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('m_material');
   if (!sheet) return null;
+  
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return null;
   
-  // ★L列（12列目）まで取得する
   const data = sheet.getRange(1, 1, lastRow, 13).getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === cd) {
@@ -261,36 +75,122 @@ function getMaterialDetail(cd) {
         memo: data[i][6],      
         displayFlag: data[i][9], 
         zaicoCd: data[i][10],     
-        zaicoConv: data[i][11],   // ★L列: Zaico換算値
-        category: data[i][12]||'食品'
+        zaicoConv: data[i][11],
+        category: data[i][12] || '食品'
       };
     }
   }
   return null;
 }
 
+// --- ソース詳細の取得 ---
+function getSourceDetail(cd) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sSheet = ss.getSheetByName('m_source');
+  const dSheet = ss.getSheetByName('m_source_detail');
+  if (!sSheet || !dSheet) return null;
+  
+  const sLast = getRealLastRow(sSheet, 1);
+  if (sLast < 2) return null;
+  
+  const sData = sSheet.getRange(1, 1, sLast, 5).getValues();
+  let detail = null;
+  for (let i = 1; i < sData.length; i++) {
+    if (sData[i][0] === cd) {
+      detail = { cd: cd, name: sData[i][1], yieldAmount: sData[i][2], displayFlag: sData[i][3], ingredients: [] };
+      break;
+    }
+  }
+  if (!detail) return null;
+  
+  const dLast = getRealLastRow(dSheet, 1);
+  if (dLast >= 2) {
+    const dData = dSheet.getRange(2, 1, dLast - 1, 3).getValues();
+    dData.forEach(row => {
+      if (row[0] === cd) detail.ingredients.push({ cd: row[1], amount: row[2] });
+    });
+  }
+  return detail;
+}
+
+// --- 製品詳細の取得 ---
+function getProductDetail(cd) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const pSheet = ss.getSheetByName('m_product');
+  const rSheet = ss.getSheetByName('m_recipe');
+  if (!pSheet || !rSheet) return null;
+  
+  const pLast = getRealLastRow(pSheet, 1);
+  if (pLast < 2) return null;
+  
+  const pData = pSheet.getRange(1, 1, pLast, 6).getValues();
+  let detail = null;
+  for (let i = 1; i < pData.length; i++) {
+    if (pData[i][0] === cd) {
+      detail = { cd: cd, name: pData[i][1], price: pData[i][2], displayFlag: pData[i][5], ingredients: [] };
+      break;
+    }
+  }
+  if (!detail) return null;
+  
+  const rLast = getRealLastRow(rSheet, 1);
+  if (rLast >= 2) {
+    const rData = rSheet.getRange(2, 1, rLast - 1, 3).getValues();
+    rData.forEach(row => {
+      if (row[0] === cd) detail.ingredients.push({ cd: row[1], amount: row[2] });
+    });
+  }
+  return detail;
+}
+
+// --- 採番処理 ---
+function getNextProductCd() { return getNextCd_('m_product', 'P-'); }
+function getNextSourceCd() { return getNextCd_('m_source', 'S-'); }
+function getNextMaterialCd() { return getNextCd_('m_material', 'M-'); }
+
+function getNextCd_(sheetName, prefix) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return prefix + '001';
+  
+  const cds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  let maxNum = 0;
+  cds.forEach(row => {
+    if (row[0] && String(row[0]).startsWith(prefix)) {
+      const num = parseInt(String(row[0]).replace(prefix, ''), 10);
+      if (!isNaN(num) && num > maxNum) maxNum = num;
+    }
+  });
+  return prefix + String(maxNum + 1).padStart(3, '0');
+}
+
+
 /**
- * 原料データを保存（新規追加 or 上書き）する関数（単位追加版）
+ * ===================================================
+ * ２．マスターデータ保存系
+ * ===================================================
  */
+
+// --- 原料の保存 ---
 function saveMaterial(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('m_material');
+  
   const zaicoConv = data.zaicoConv ? Number(data.zaicoConv) : 1;
   const safeZaicoCd = data.zaicoCd ? "'" + data.zaicoCd : "";
-  const category = data.category || '食品'; // ★追加
+  const category = data.category || '食品';
   
   if (data.mode === 'new') {
     const nextRow = getRealLastRow(sheet, 1) + 1;
     const formulaH = `=IF(E${nextRow}="","",E${nextRow}*1.08)`;
     const formulaI = `=IF(E${nextRow}="","",E${nextRow}/C${nextRow})`;
     
-    // ★M列目（13番目）に category を追加
     const rowData = [
       data.cd, data.name, data.kikaku, data.unit, data.priceEx, 
       data.supplier, data.memo, formulaH, formulaI, data.displayFlag, safeZaicoCd, zaicoConv, category
     ];
     sheet.getRange(nextRow, 1, 1, rowData.length).setValues([rowData]);
-    
   } else {
     const lastRow = getRealLastRow(sheet, 1);
     const cdValues = sheet.getRange(1, 1, lastRow, 1).getValues();
@@ -302,411 +202,210 @@ function saveMaterial(data) {
       }
     }
     if (targetRow !== -1) {
-      sheet.getRange(targetRow, 2, 1, 6).setValues([[
-        data.name, data.kikaku, data.unit, data.priceEx, data.supplier, data.memo
-      ]]);
+      sheet.getRange(targetRow, 2, 1, 6).setValues([[ data.name, data.kikaku, data.unit, data.priceEx, data.supplier, data.memo ]]);
       sheet.getRange(targetRow, 10).setValue(data.displayFlag);
       sheet.getRange(targetRow, 11).setValue(safeZaicoCd);
       sheet.getRange(targetRow, 12).setValue(zaicoConv); 
-      sheet.getRange(targetRow, 13).setValue(category); // ★M列を上書き
+      sheet.getRange(targetRow, 13).setValue(category);
     }
   }
   return { success: true, mode: data.mode, generatedCd: data.cd };
 }
-/**
- * ===================================================
- * 【ソースマスター管理用】の追加関数
- * ===================================================
- */
 
-/**
- * 次のソースCDを取得する関数（SO0001〜で採番）
- */
-function getNextSourceCd() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_source');
-  let newCd = "SO0001";
-  
-  if (sheet) {
-    const lastRow = getRealLastRow(sheet, 1);
-    if (lastRow > 1) {
-      const cdValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-      let maxNum = 0;
-      cdValues.forEach(row => {
-        const cdStr = String(row[0]);
-        const numMatch = cdStr.match(/\d+/);
-        if (numMatch) {
-          const num = parseInt(numMatch[0], 10);
-          if (num > maxNum) maxNum = num;
-        }
-      });
-      newCd = "SO" + ("0000" + (maxNum + 1)).slice(-4);
-    }
-  }
-  return newCd;
-}
-
-/**
- * 既存のソースデータ（親と子レシピ）を取得する関数
- */
-function getSourceDetail(cd) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pSheet = ss.getSheetByName('m_source');
-  const rSheet = ss.getSheetByName('m_source_recipe');
-  
-  let parentData = null;
-  const pLastRow = getRealLastRow(pSheet, 1);
-  if (pLastRow >= 2) {
-    const pValues = pSheet.getRange(1, 1, pLastRow, 6).getValues();
-    for (let i = 1; i < pValues.length; i++) {
-      if (pValues[i][0] === cd) {
-        parentData = {
-          cd: pValues[i][0],
-          name: pValues[i][1],
-          yieldAmount: pValues[i][2], // C列: 出来上がり量
-          displayFlag: pValues[i][5]  // F列: 表示区分
-        };
-        break;
-      }
-    }
-  }
-  
-  if (!parentData) return null;
-  
-  // 子シートからレシピ構成を取得
-  const ingredients = [];
-  const rLastRow = getRealLastRow(rSheet, 1);
-  if (rLastRow >= 2) {
-    const rValues = rSheet.getRange(1, 1, rLastRow, 4).getValues();
-    for (let i = 1; i < rValues.length; i++) {
-      if (rValues[i][0] === cd) {
-        ingredients.push({
-          cd: rValues[i][1],      // B列: 原料CD
-          amount: rValues[i][3]   // D列: 分量
-        });
-      }
-    }
-  }
-  
-  parentData.ingredients = ingredients;
-  return parentData;
-}
-
-/**
- * ソースデータとレシピを保存（新規追加 or 上書き）する関数
- */
+// --- ソースの保存 ---
 function saveSource(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const pSheet = ss.getSheetByName('m_source');
-  const rSheet = ss.getSheetByName('m_source_recipe');
+  const sSheet = ss.getSheetByName('m_source');
+  const dSheet = ss.getSheetByName('m_source_detail');
   
-  const targetCd = data.sourceCd;
-  
-  // 1. 親データ（m_source）の保存
+  // 親データの保存
   if (data.mode === 'new') {
-    const pNextRow = getRealLastRow(pSheet, 1) + 1;
-    const formulaD = `=IF(A${pNextRow}="","",SUMIFS(m_source_recipe!$E:$E,m_source_recipe!$A:$A,A${pNextRow}))`;
-    const formulaE = `=IFERROR(IF(A${pNextRow}="","",D${pNextRow}/C${pNextRow}),0)`;
-    
-    pSheet.getRange(pNextRow, 1, 1, 6).setValues([[
-      targetCd, data.sourceName, data.yieldAmount,formulaD, formulaE, data.displayFlag
-    ]]);
-
-     pSheet.getRange(pNextRow,4).setNumberFormat("0.0");
-     pSheet.getRange(pNextRow,5).setNumberFormat("0.00");
+    const nextRow = getRealLastRow(sSheet, 1) + 1;
+    sSheet.getRange(nextRow, 1, 1, 4).setValues([[ data.sourceCd, data.sourceName, data.yieldAmount, data.displayFlag ]]);
   } else {
-    // 上書き（B列、C列、F列のみ更新）
-    const lastRow = getRealLastRow(pSheet, 1);
-    const cdValues = pSheet.getRange(1, 1, lastRow, 1).getValues();
+    const sLast = getRealLastRow(sSheet, 1);
+    const sCds = sSheet.getRange(1, 1, sLast, 1).getValues();
     let targetRow = -1;
-    for (let i = 0; i < cdValues.length; i++) {
-      if (cdValues[i][0] === targetCd) {
-        targetRow = i + 1;
-        break;
-      }
+    for (let i = 0; i < sCds.length; i++) {
+      if (sCds[i][0] === data.sourceCd) { targetRow = i + 1; break; }
     }
     if (targetRow !== -1) {
-      pSheet.getRange(targetRow, 2).setValue(data.sourceName);
-      pSheet.getRange(targetRow, 3).setValue(data.yieldAmount);
-      pSheet.getRange(targetRow, 6).setValue(data.displayFlag);
+      sSheet.getRange(targetRow, 2, 1, 3).setValues([[ data.sourceName, data.yieldAmount, data.displayFlag ]]);
     }
-  }
-
-  // 2. 子データ（m_source_recipe）の保存
-  if (data.mode === 'edit') {
-    // 古いレシピ行を下から順に削除（行ズレ防止のため下から）
-    const rLastRow = getRealLastRow(rSheet, 1);
-    if (rLastRow > 1) {
-      const rData = rSheet.getRange(1, 1, rLastRow, 1).getValues();
-      for (let i = rData.length - 1; i >= 1; i--) {
-        if (rData[i][0] === targetCd) {
-          rSheet.deleteRow(i + 1);
-        }
+    // 古い構成を削除
+    const dLast = getRealLastRow(dSheet, 1);
+    if (dLast >= 2) {
+      const dCds = dSheet.getRange(2, 1, dLast - 1, 1).getValues();
+      for (let i = dCds.length - 1; i >= 0; i--) {
+        if (dCds[i][0] === data.sourceCd) { dSheet.deleteRow(i + 2); }
       }
     }
   }
-
-  // 新しいレシピの追記
-  let rNextRow = getRealLastRow(rSheet, 1) + 1;
-  const recipeData = [];
-  data.ingredients.forEach(item => {
-    const formulaC = `=IF(B${rNextRow}="","",IFERROR(XLOOKUP(B${rNextRow},m_source!$A:$A,m_source!$B:$B),XLOOKUP(B${rNextRow},m_material!$A:$A,m_material!$B:$B,"エラー")))`;
-    const formulaE = `=IF(B${rNextRow}="","",D${rNextRow}*IFERROR(XLOOKUP(B${rNextRow},m_source!$A:$A,m_source!E:E),XLOOKUP(B${rNextRow},m_material!$A:$A,m_material!$I:$I,0)))`;
-    
-    recipeData.push([targetCd, item.cd, formulaC, item.amount, formulaE]);
-    rNextRow++;
-  });
   
-  if (recipeData.length > 0) {
-    const startRow = getRealLastRow(rSheet, 1) + 1;
-    rSheet.getRange(startRow, 1, recipeData.length, 5).setValues(recipeData);
-
-    rSheet.getRange(startRow,5,recipeData.length,1).setNumberFormat("0.00");
+  // 構成（レシピ）の保存
+  if (data.ingredients && data.ingredients.length > 0) {
+    const nextD = getRealLastRow(dSheet, 1) + 1;
+    const writeData = data.ingredients.map(ing => [data.sourceCd, ing.cd, ing.amount]);
+    dSheet.getRange(nextD, 1, writeData.length, 3).setValues(writeData);
   }
-  
-  return { success: true, mode: data.mode, generatedCd: targetCd };
+  return { success: true, mode: data.mode };
 }
 
-/**
- * かき氷製品の編集用リストを取得する関数
- */
-function getProductList() {
+// --- 製品の保存 ---
+function saveRecipe(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_product');
-  let list = [];
-  if (sheet) {
-    const lastRow = getRealLastRow(sheet, 1);
-    if (lastRow >= 2) {
-      // ★F列（6列目）まで読み込むように変更
-      const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
-      data.forEach(row => {
-        // ★row[5]（F列）が空白でない場合は「非表示」
-        if (row[0]) list.push({ cd: row[0], name: row[1], isHidden: row[5] !== "" });
-      });
+  const pSheet = ss.getSheetByName('m_product');
+  const rSheet = ss.getSheetByName('m_recipe');
+  
+  if (data.mode === 'new') {
+    const nextRow = getRealLastRow(pSheet, 1) + 1;
+    pSheet.getRange(nextRow, 1, 1, 6).setValues([[ data.productCd, data.productName, data.price, "", "", data.displayFlag ]]);
+  } else {
+    const pLast = getRealLastRow(pSheet, 1);
+    const pCds = pSheet.getRange(1, 1, pLast, 1).getValues();
+    let targetRow = -1;
+    for (let i = 0; i < pCds.length; i++) {
+      if (pCds[i][0] === data.productCd) { targetRow = i + 1; break; }
+    }
+    if (targetRow !== -1) {
+      pSheet.getRange(targetRow, 2, 1, 2).setValues([[ data.productName, data.price ]]);
+      pSheet.getRange(targetRow, 6).setValue(data.displayFlag);
+    }
+    const rLast = getRealLastRow(rSheet, 1);
+    if (rLast >= 2) {
+      const rCds = rSheet.getRange(2, 1, rLast - 1, 1).getValues();
+      for (let i = rCds.length - 1; i >= 0; i--) {
+        if (rCds[i][0] === data.productCd) { rSheet.deleteRow(i + 2); }
+      }
     }
   }
-  return list;
+  
+  if (data.ingredients && data.ingredients.length > 0) {
+    const nextR = getRealLastRow(rSheet, 1) + 1;
+    const writeData = data.ingredients.map(ing => [data.productCd, ing.cd, ing.amount]);
+    rSheet.getRange(nextR, 1, writeData.length, 3).setValues(writeData);
+  }
+  return { success: true, mode: data.mode };
 }
 
+
 /**
  * ===================================================
- * 【日次業務（廃棄・試食登録）用】の追加関数
+ * ３．業務記録・売上・レポート系
  * ===================================================
  */
 
-/**
- * 日次業務の記録を保存する関数
- */
+// --- 日次記録の保存 ---
 function saveDailyRecord(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('t_daily_record');
-  
-  // もしシートが無ければ自動で作成し、ヘッダーをセットする親切設計
-  if (!sheet) {
-    sheet = ss.insertSheet('t_daily_record');
-    sheet.appendRow(['システム登録日時', '対象日付', '登録者', '区分', 'マスター種別', 'アイテムCD', 'アイテム名', '数量', '理由']);
-    sheet.getRange("A1:I1").setFontWeight("bold").setBackground("#e2e8f0");
-  }
-  
-  // タイムスタンプ（現在時刻）
+  const sheet = ss.getSheetByName('t_daily_record');
+  const nextRow = getRealLastRow(sheet, 1) + 1;
+  const key = Utilities.getUuid();
   const timestamp = new Date();
   
-  // データをシートの最終行に追記（アペンド）
-  sheet.appendRow([
-    timestamp,
-    data.date,
-    data.staffName,
-    data.category,
-    data.itemType,
-    data.itemCd,
-    data.itemName,
-    data.quantity,
-    data.reason
-  ]);
-  
+  const rowData = [
+    key, timestamp, data.date, data.staffName, data.category,
+    data.itemType, data.itemCd, data.itemName, data.quantity, data.reason
+  ];
+  sheet.getRange(nextRow, 1, 1, rowData.length).setValues([rowData]);
   return { success: true };
 }
 
-/**
- * ===================================================
- * 【ログイン画面用】の追加関数
- * ===================================================
- */
-
-/**
- * m_userシートからログインIDのリストを取得する関数
- */
-function getUserList() {
+// --- 日次記録の一覧取得 ---
+function getDailyRecordList(startDateStr, endDateStr) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_user');
-  
+  const sheet = ss.getSheetByName('t_daily_record');
   if (!sheet) return [];
   
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return [];
   
-  const ids = [];
-  // A列（ID）を取得
-  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  const startObj = startDateStr ? new Date(startDateStr) : new Date(0);
+  const endObj = endDateStr ? new Date(endDateStr) : new Date("2099-12-31");
+  endObj.setHours(23, 59, 59, 999);
+  
+  let list = [];
   data.forEach(row => {
-    if (row[0]) {
-      ids.push(row[0]);
+    if (row[0] && row[2]) {
+      const rDate = new Date(row[2]);
+      if (rDate >= startObj && rDate <= endObj) {
+        const dStr = Utilities.formatDate(rDate, Session.getScriptTimeZone(), "yyyy/MM/dd");
+        list.push({
+          key: row[0],
+          label: `[${dStr}] ${row[4]} - ${row[7]} (${row[8]})`,
+          dateObj: rDate
+        });
+      }
     }
   });
-  
-  return ids;
+  list.sort((a, b) => b.dateObj - a.dateObj);
+  return list;
 }
 
-/**
- * ===================================================
- * 【ユーザーマスタ管理】の追加関数
- * ===================================================
- */
-function getUserDetail(id) {
+// --- 日次記録の詳細取得 ---
+function getDailyRecordDetail(key) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('m_user');
+  const sheet = ss.getSheetByName('t_daily_record');
   if (!sheet) return null;
-  
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return null;
   
-  const data = sheet.getRange(1, 1, lastRow, 3).getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === id) {
-      return { id: data[i][0], pass: data[i][1], name: data[i][2] };
+  const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] === key) {
+      return {
+        date: data[i][2],
+        staffName: data[i][3],
+        category: data[i][4],
+        itemType: data[i][5],
+        itemCd: data[i][6],
+        quantity: data[i][8],
+        reason: data[i][9]
+      };
     }
   }
   return null;
 }
 
-function saveUser(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('m_user');
-  if (!sheet) {
-    sheet = ss.insertSheet('m_user');
-    sheet.appendRow(['ID', 'Password', 'Name']);
-  }
-  
-  if (data.mode === 'new') {
-    const nextRow = getRealLastRow(sheet, 1) + 1;
-    sheet.getRange(nextRow, 1, 1, 3).setValues([[data.id, data.pass, data.name]]);
-  } else {
-    const lastRow = getRealLastRow(sheet, 1);
-    const idValues = sheet.getRange(1, 1, lastRow, 1).getValues();
-    let targetRow = -1;
-    for (let i = 0; i < idValues.length; i++) {
-      if (idValues[i][0] === data.id) {
-        targetRow = i + 1;
-        break;
-      }
-    }
-    if (targetRow !== -1) {
-      sheet.getRange(targetRow, 2).setValue(data.pass);
-      sheet.getRange(targetRow, 3).setValue(data.name);
-    }
-  }
-  return { success: true };
-}
-
-/**
- * ===================================================
- * 【日次記録（編集・削除）】の追加関数
- * ===================================================
- */
-function getDailyRecordList(startDateStr, endDateStr) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('t_daily_record');
-  let list = [];
-  
-  if (sheet) {
-    const lastRow = getRealLastRow(sheet, 1);
-    if (lastRow >= 2) {
-      const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
-      
-      const startObj = startDateStr ? new Date(startDateStr) : new Date('2000-01-01');
-      startObj.setHours(0, 0, 0, 0);
-      const endObj = endDateStr ? new Date(endDateStr) : new Date('2100-01-01');
-      endObj.setHours(23, 59, 59, 999);
-
-      // 最新の記録が上に来るように逆順で処理
-      for (let i = data.length - 1; i >= 0; i--) {
-        const row = data[i];
-        if (row[0]) {
-          const recordDate = new Date(row[1]);
-          if (recordDate >= startObj && recordDate <= endObj) {
-            
-            // ★ポイント1：配列のインデックス(i)から、実際のシートの行番号を計算
-            const rowNum = i + 2; 
-            
-            // ★ポイント2：日付を「yyyy/MM/dd」の綺麗な形にフォーマット
-            const dateStr = Utilities.formatDate(recordDate, Session.getScriptTimeZone(), 'yyyy/MM/dd');
-            const label = `[${dateStr}] ${row[3]} - ${row[6]} (${row[2]})`;
-            
-            // 行番号をキーとして画面に渡す
-            list.push({ key: String(rowNum), label: label });
-          }
-        }
-      }
-    }
-  }
-  return list;
-}
-
-function getDailyRecordDetail(rowNumStr) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('t_daily_record');
-  if (!sheet) return null;
-  
-  const rowNum = parseInt(rowNumStr, 10);
-  
-  // 指定された行のデータを1行だけ取得
-  const data = sheet.getRange(rowNum, 1, 1, 9).getValues()[0];
-  
-  // 画面の入力フォーム（カレンダー）にセットしやすいよう、「yyyy-MM-dd」にフォーマット
-  const dateStr = Utilities.formatDate(new Date(data[1]), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-
-  return {
-    key: rowNumStr,
-    date: dateStr,
-    staffName: data[2],
-    category: data[3],
-    itemType: data[4],
-    itemCd: data[5],
-    quantity: data[7],
-    reason: data[8]
-  };
-}
-
+// --- 日次記録の更新 ---
 function updateDailyRecord(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('t_daily_record');
-  if (!sheet) return { success: false };
+  const lastRow = getRealLastRow(sheet, 1);
+  const keys = sheet.getRange(1, 1, lastRow, 1).getValues();
   
-  const rowNum = parseInt(data.key, 10);
-  
-  // B列からI列まで（8列分）を上書き
-  sheet.getRange(rowNum, 2, 1, 8).setValues([[
-    data.date, data.staffName, data.category, data.itemType, data.itemCd, data.itemName, data.quantity, data.reason
-  ]]);
-  return { success: true };
+  for (let i = 1; i < keys.length; i++) {
+    if (keys[i][0] === data.key) {
+      const targetRow = i + 1;
+      const timestamp = new Date();
+      sheet.getRange(targetRow, 2, 1, 9).setValues([[
+        timestamp, data.date, data.staffName, data.category, 
+        data.itemType, data.itemCd, data.itemName, data.quantity, data.reason
+      ]]);
+      return { success: true };
+    }
+  }
+  return { success: false };
 }
 
-function deleteDailyRecord(rowNumStr) {
+// --- 日次記録の削除 ---
+function deleteDailyRecord(key) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('t_daily_record');
-  if (!sheet) return { success: false };
+  const lastRow = getRealLastRow(sheet, 1);
+  const keys = sheet.getRange(1, 1, lastRow, 1).getValues();
   
-  const rowNum = parseInt(rowNumStr, 10);
-  sheet.deleteRow(rowNum); // 指定された行をズバッと削除
-  
-  return { success: true };
+  for (let i = 1; i < keys.length; i++) {
+    if (keys[i][0] === key) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { success: false };
 }
 
-/**
- * ===================================================
- * 【売上CSV取り込み機能】（月次・商品別集計版）
- * ===================================================
- */
+// --- 売上CSVの取り込み ---
 function uploadSalesCsv(csvText) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('t_sales_record');
@@ -717,13 +416,11 @@ function uploadSalesCsv(csvText) {
     sheet.getRange("A1:G1").setFontWeight("bold").setBackground("#e2e8f0");
   }
   
-  // 製品マスター（m_product）を読み込んで辞書を作る
   const pSheet = ss.getSheetByName('m_product');
   let productMaster = {};
   if (pSheet) {
     const pLastRow = getRealLastRow(pSheet, 1);
     if (pLastRow >= 2) {
-      // A列:CD, B列:製品名, D列:原価
       const pData = pSheet.getRange(2, 1, pLastRow - 1, 4).getValues();
       pData.forEach(row => {
         if (row[0] && row[1]) {
@@ -736,31 +433,24 @@ function uploadSalesCsv(csvText) {
   try {
     const data = Utilities.parseCsv(csvText);
     const timestamp = new Date();
-    
-    // ★集計用オブジェクト（辞書）
     const aggregated = {};
     
-    // i=1 (2行目) からスタート
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       if (row.length > 18) {
-        const dateRaw = row[2];          // C列: 取引日
-        const nameVal = row[12];         // M列: 商品名
-        const qtyVal = Number(row[18]);  // S列: 数量
+        const dateRaw = row[2];          
+        const nameVal = row[12];         
+        const qtyVal = Number(row[18]);  
         
         if (dateRaw && nameVal && !isNaN(qtyVal) && qtyVal !== 0) {
-          // ★日付を「月初」に変換 (例: 2026/7/2 -> 2026/07/01)
           const d = new Date(dateRaw);
           if (isNaN(d.getTime())) continue; 
           
           const yyyy = d.getFullYear();
           const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const firstDayStr = `${yyyy}/${mm}/01`; // 月初の日付
+          const firstDayStr = `${yyyy}/${mm}/01`; 
           
-          // 「年月_商品名」を合体させて集計用のキーにする
           const key = firstDayStr + "_" + nameVal;
-          
-          // 初めて出てきた商品の場合は、枠を作る
           if (!aggregated[key]) {
             let cd = "";
             let cost = 0;
@@ -768,58 +458,35 @@ function uploadSalesCsv(csvText) {
               cd = productMaster[nameVal].cd;
               cost = productMaster[nameVal].cost;
             }
-            aggregated[key] = {
-              month: firstDayStr,
-              name: nameVal,
-              cd: cd,
-              unitCost: cost,
-              qty: 0
-            };
+            aggregated[key] = { month: firstDayStr, name: nameVal, cd: cd, unitCost: cost, qty: 0 };
           }
-          // ★数量を足し算（Sumifの役割）
           aggregated[key].qty += qtyVal;
         }
       }
     }
     
-    // 書き込み用配列の作成
     const rowsToAppend = [];
     for (const key in aggregated) {
       const item = aggregated[key];
-      
-      // ★小数第1位に丸める
       const unitCost = Number(item.unitCost.toFixed(1));
       const totalCost = Number((item.unitCost * item.qty).toFixed(1));
-      
-      rowsToAppend.push([
-        timestamp, 
-        item.month, 
-        item.name, 
-        item.cd, 
-        item.qty, 
-        unitCost, 
-        totalCost
-      ]);
+      rowsToAppend.push([ timestamp, item.month, item.name, item.cd, item.qty, unitCost, totalCost ]);
     }
     
-    // 一括でシートに書き込み
     if (rowsToAppend.length > 0) {
       const nextRow = getRealLastRow(sheet, 1) + 1;
       sheet.getRange(nextRow, 1, rowsToAppend.length, 7).setValues(rowsToAppend);
-      
-      // ★F列（1個あたり原価）、G列（原価合計）の表示形式を小数第1位（0.0）に設定
       sheet.getRange(nextRow, 6, rowsToAppend.length, 2).setNumberFormat("0.0");
-      
       return { success: true, count: rowsToAppend.length };
     } else {
       return { success: false, message: "有効な売上データが見つかりませんでした。" };
     }
-    
   } catch (e) {
     return { success: false, message: "CSVの解析に失敗しました。: " + e.message };
   }
 }
 
+// --- 棚卸レポートの取得（Zaico連携） ---
 function getZaicoInventoryReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const zSheet = ss.getSheetByName('DB_zaico');
@@ -827,16 +494,13 @@ function getZaicoInventoryReport() {
   
   if (!zSheet || !mSheet) return { success: false, message: 'DB_zaico または m_material シートが見つかりません。' };
   
-  // 1. 原料マスターの辞書作成
   const mData = mSheet.getDataRange().getValues();
   const matMap = {};
   for (let i = 1; i < mData.length; i++) {
-    const zCdStr = String(mData[i][10] || '').trim(); // K列: ZaicoCD
-    
+    const zCdStr = String(mData[i][10] || '').trim();
     if (zCdStr) {
-      // ★カンマ(,)や読点(、)で区切られた複数のZaicoCDに対応する処理
+      // 複数のZaicoCDに対応
       const zCds = zCdStr.split(/[,、]/).map(s => s.trim()).filter(s => s !== "");
-      
       zCds.forEach(zCd => {
         matMap[zCd] = {
           sysCd: mData[i][0],
@@ -849,7 +513,6 @@ function getZaicoInventoryReport() {
     }
   }
   
-  // 2. Zaicoデータの取得と最新日の特定
   const zData = zSheet.getDataRange().getValues();
   if (zData.length < 2) return { success: false, message: 'Zaicoデータがありません。' };
   
@@ -862,17 +525,15 @@ function getZaicoInventoryReport() {
   }
   if (latestDate === 0) return { success: false, message: 'Zaicoデータに有効な日付がありません。' };
   
-  // 3. 換算処理と計算
   let totalValue = 0;
   const reportList = [];
   
   for (let i = 1; i < zData.length; i++) {
     const rowDate = new Date(zData[i][0]).getTime();
-    
     if (rowDate === latestDate) {
       const zCd = String(zData[i][1] || '').trim();
       const zName = zData[i][2];
-      const stockQty = Number(zData[i][4]) || 0; // Zaicoの数量
+      const stockQty = Number(zData[i][4]) || 0;
       
       let matchStatus = false;
       let sysCd = "-";
@@ -887,29 +548,112 @@ function getZaicoInventoryReport() {
         sysName = matMap[zCd].sysName;
         unitCost = matMap[zCd].unitCost;
         
-        // ★換算値を使ってシステム単位の数量を算出
         const conv = matMap[zCd].zaicoConv;
         const sysQty = stockQty * conv; 
-        
         itemValue = Math.round(unitCost * sysQty);
         totalValue += itemValue;
-        
-        // 画面表示用（システム数量 + 小さくZaico数量）
         displayQty = `${sysQty} ${matMap[zCd].unit} <br><span class="text-xs text-gray-400">(Zaico: ${stockQty} × ${conv})</span>`;
       }
       
       reportList.push({
-        match: matchStatus,
-        zaicoCd: zCd,
-        sysCd: sysCd,
-        name: sysName,
-        qtyHtml: displayQty, // HTMLとして渡す
-        unitCost: unitCost.toFixed(1),
-        itemValue: itemValue
+        match: matchStatus, zaicoCd: zCd, sysCd: sysCd, name: sysName, 
+        qtyHtml: displayQty, unitCost: unitCost.toFixed(1), itemValue: itemValue
       });
     }
   }
   
   const dateStr = Utilities.formatDate(new Date(latestDate), Session.getScriptTimeZone(), 'yyyy/MM/dd');
   return { success: true, targetDate: dateStr, totalValue: totalValue, list: reportList };
+}
+
+
+/**
+ * ===================================================
+ * ４．ユーザー管理・ログイン・共通ユーティリティ
+ * ===================================================
+ */
+
+// --- Webアプリの初期画面表示 ---
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle('店舗業務システム')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+// --- 共通：実際の最終行を取得する関数 ---
+function getRealLastRow(sheet, columnNumber) {
+  const vals = sheet.getRange(1, columnNumber, sheet.getMaxRows(), 1).getValues();
+  for (let i = vals.length - 1; i >= 0; i--) {
+    if (vals[i][0] !== "") return i + 1;
+  }
+  return 0;
+}
+
+// --- ユーザー一覧の取得 ---
+function getUserList() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  if (!sheet) return [];
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return [];
+  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  return data.map(row => String(row[0])).filter(val => val !== "");
+}
+
+// --- ログインチェック ---
+function checkLogin(id, pass) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  if (!sheet) return { success: false, message: 'ユーザーマスタが存在しません。' };
+  
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return { success: false, message: 'ユーザーが登録されていません。' };
+  
+  const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === String(id) && String(data[i][2]) === String(pass)) {
+      return { success: true, staffName: data[i][1] };
+    }
+  }
+  return { success: false, message: 'IDまたはパスワードが間違っています。' };
+}
+
+// --- ユーザー詳細の取得 ---
+function getUserDetail(id) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  if (!sheet) return null;
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return null;
+  
+  const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      return { id: data[i][0], name: data[i][1], pass: data[i][2] };
+    }
+  }
+  return null;
+}
+
+// --- ユーザーの保存 ---
+function saveUser(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('m_user');
+  if (!sheet) return { success: false };
+  
+  if (data.mode === 'new') {
+    const nextRow = getRealLastRow(sheet, 1) + 1;
+    sheet.getRange(nextRow, 1, 1, 3).setValues([[ data.id, data.name, data.pass ]]);
+  } else {
+    const lastRow = getRealLastRow(sheet, 1);
+    const ids = sheet.getRange(1, 1, lastRow, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]) === String(data.id)) {
+        sheet.getRange(i + 1, 2, 1, 2).setValues([[ data.name, data.pass ]]);
+        break;
+      }
+    }
+  }
+  return { success: true };
 }
