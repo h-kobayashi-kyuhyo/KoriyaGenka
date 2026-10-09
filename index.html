@@ -321,12 +321,17 @@
       reloadUserDropdown(); 
     });
 
-    function reloadUserDropdown() { 
-      google.script.run.withSuccessHandler(function(idList) { 
+     function reloadUserDropdown() { 
+      google.script.run.withSuccessHandler(function(userList) { 
         let html = '<option value="">選択してください</option>'; 
-        idList.forEach(id => { html += `<option value="${id}">${id}</option>`; }); 
+        userList.forEach(user => { 
+          // ★ valueにはIDをセットし、画面表示用には名前(user.name)をセットする
+          html += `<option value="${user.id}">${user.name}</option>`; 
+        }); 
+        
         const loginSel = document.getElementById('login-id'); 
         if(loginSel) loginSel.innerHTML = html; 
+        
         const editUserSel = document.getElementById('edit-user-id'); 
         if(editUserSel) editUserSel.innerHTML = html; 
       }).getUserList(); 
@@ -400,6 +405,8 @@
       document.getElementById('content-sales').classList.add('hidden'); 
       document.getElementById('content-report').classList.add('hidden'); 
       document.getElementById('content-recipe').classList.remove('hidden'); 
+      document.getElementById('master-type').value = 'product'; 
+      document.getElementById('action-type').value = 'new';      
       changeMasterView(); 
     }
     
@@ -522,6 +529,10 @@
       document.getElementById('daily-staff').value = ''; 
       document.getElementById('daily-category').value = '廃棄'; 
       document.getElementById('daily-item-type').value = 'product'; 
+
+      document.getElementById('daily-item-cd').value = ''; 
+      document.getElementById('edit-daily-key').value = '';
+
       document.getElementById('daily-qty').value = ''; 
       document.getElementById('daily-reason').value = ''; 
       if(document.getElementById('search-daily-item')) document.getElementById('search-daily-item').value = ''; 
@@ -708,6 +719,7 @@
           editSelect.classList.add('hidden'); 
           saveBtn.textContent = 'ユーザーを新規登録する'; 
           clearUserForm(); 
+          fetchNextUserCd();
         } 
       } 
     }
@@ -803,6 +815,8 @@
       document.getElementById('recipe-name').value = ''; 
       document.getElementById('recipe-price').value = ''; 
       document.getElementById('recipe-displayFlag').value = ''; 
+      document.getElementById('edit-product-cd').value = ''; // ★追加
+
       if(document.getElementById('search-edit-prod')) document.getElementById('search-edit-prod').value = ''; 
       renderProductList(); 
     }
@@ -885,6 +899,8 @@
       document.getElementById('source-name').value = ''; 
       document.getElementById('source-yield').value = ''; 
       document.getElementById('source-displayFlag').value = ''; 
+      document.getElementById('edit-source-cd').value = ''; // ★追加
+
       if(document.getElementById('search-edit-src')) document.getElementById('search-edit-src').value = ''; 
       updateEditDropdowns(); 
     }
@@ -1027,6 +1043,7 @@
       document.getElementById('mat-zaico-cd').value = ''; 
       document.getElementById('mat-zaico-conv').value = ''; 
       document.getElementById('mat-category').value = '食品'; 
+      document.getElementById('edit-mat-cd').value = ''; // ★追加
       if(document.getElementById('search-edit-mat')) document.getElementById('search-edit-mat').value = ''; 
       updateEditDropdowns(); 
     }
@@ -1076,13 +1093,18 @@
       document.getElementById('user-id').value = ''; 
       document.getElementById('user-name').value = ''; 
       document.getElementById('user-pass').value = ''; 
-      const action = document.getElementById('action-type').value; 
-      document.getElementById('user-id').readOnly = (action === 'edit'); 
-      if(action === 'edit') {
-        document.getElementById('user-id').classList.add('bg-gray-100'); 
-      } else {
-        document.getElementById('user-id').classList.remove('bg-gray-100'); 
-      }
+      document.getElementById('edit-user-id').value = ''; // ★追加
+      // ★自動採番になるため、新規・編集問わず常にIDは読み取り専用＆グレー背景にする
+      document.getElementById('user-id').readOnly = true; 
+      document.getElementById('user-id').classList.add('bg-gray-100'); 
+    }
+
+    // ★追加：ユーザーIDの自動採番をサーバーから取得する関数
+    function fetchNextUserCd() { 
+      document.getElementById('user-id').value = '読込中...'; 
+      google.script.run.withSuccessHandler(function(nextCd) { 
+        document.getElementById('user-id').value = nextCd; 
+      }).getNextUserCd(); 
     }
 
     function loadUserDetail() { 

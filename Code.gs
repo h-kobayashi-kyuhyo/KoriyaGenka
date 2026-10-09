@@ -87,28 +87,35 @@ function getMaterialDetail(cd) {
 function getSourceDetail(cd) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sSheet = ss.getSheetByName('m_source');
-  const dSheet = ss.getSheetByName('m_source_detail');
-  if (!sSheet || !dSheet) return null;
+  if (!sSheet) return null;
   
   const sLast = getRealLastRow(sSheet, 1);
   if (sLast < 2) return null;
   
-  const sData = sSheet.getRange(1, 1, sLast, 5).getValues();
+  const sData = sSheet.getRange(1, 1, sLast, 6).getValues();
   let detail = null;
   for (let i = 1; i < sData.length; i++) {
-    if (sData[i][0] === cd) {
-      detail = { cd: cd, name: sData[i][1], yieldAmount: sData[i][2], displayFlag: sData[i][3], ingredients: [] };
+    if (String(sData[i][0]).trim().toLowerCase() === String(cd).trim().toLowerCase()) {
+      detail = { cd: cd, name: sData[i][1], yieldAmount: sData[i][2], displayFlag: sData[i][5], ingredients: [] };
       break;
     }
   }
   if (!detail) return null;
   
-  const dLast = getRealLastRow(dSheet, 1);
-  if (dLast >= 2) {
-    const dData = dSheet.getRange(2, 1, dLast - 1, 3).getValues();
-    dData.forEach(row => {
-      if (row[0] === cd) detail.ingredients.push({ cd: row[1], amount: row[2] });
-    });
+  // ★シート名を 'm_source_recipe' に修正
+  const dSheet = ss.getSheetByName('m_source_recipe');
+  if (dSheet) {
+    const dLast = getRealLastRow(dSheet, 1);
+    if (dLast >= 2) {
+      // ★4列目（使用量）まで取得するように変更
+      const dData = dSheet.getRange(2, 1, dLast - 1, 4).getValues();
+      dData.forEach(row => {
+        if (String(row[0]).trim().toLowerCase() === String(cd).trim().toLowerCase()) {
+          // ★使用量は4列目なので row[3] を指定
+          detail.ingredients.push({ cd: String(row[1]).trim(), amount: row[3] });
+        }
+      });
+    }
   }
   return detail;
 }
@@ -117,8 +124,7 @@ function getSourceDetail(cd) {
 function getProductDetail(cd) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const pSheet = ss.getSheetByName('m_product');
-  const rSheet = ss.getSheetByName('m_recipe');
-  if (!pSheet || !rSheet) return null;
+  if (!pSheet) return null;
   
   const pLast = getRealLastRow(pSheet, 1);
   if (pLast < 2) return null;
@@ -126,33 +132,42 @@ function getProductDetail(cd) {
   const pData = pSheet.getRange(1, 1, pLast, 6).getValues();
   let detail = null;
   for (let i = 1; i < pData.length; i++) {
-    if (pData[i][0] === cd) {
+    if (String(pData[i][0]).trim().toLowerCase() === String(cd).trim().toLowerCase()) {
       detail = { cd: cd, name: pData[i][1], price: pData[i][2], displayFlag: pData[i][5], ingredients: [] };
       break;
     }
   }
   if (!detail) return null;
   
-  const rLast = getRealLastRow(rSheet, 1);
-  if (rLast >= 2) {
-    const rData = rSheet.getRange(2, 1, rLast - 1, 3).getValues();
-    rData.forEach(row => {
-      if (row[0] === cd) detail.ingredients.push({ cd: row[1], amount: row[2] });
-    });
+  // ★シート名を 'm_product_recipe' に修正
+  const rSheet = ss.getSheetByName('m_product_recipe');
+  if (rSheet) {
+    const rLast = getRealLastRow(rSheet, 1);
+    if (rLast >= 2) {
+      // ★4列目（使用量）まで取得するように変更
+      const rData = rSheet.getRange(2, 1, rLast - 1, 4).getValues();
+      rData.forEach(row => {
+        if (String(row[0]).trim().toLowerCase() === String(cd).trim().toLowerCase()) {
+          // ★使用量は4列目なので row[3] を指定
+          detail.ingredients.push({ cd: String(row[1]).trim(), amount: row[3] });
+        }
+      });
+    }
   }
   return detail;
 }
 
 // --- 採番処理 ---
-function getNextProductCd() { return getNextCd_('m_product', 'P-'); }
-function getNextSourceCd() { return getNextCd_('m_source', 'S-'); }
-function getNextMaterialCd() { return getNextCd_('m_material', 'M-'); }
+function getNextProductCd() { return getNextCd_('m_product', 'SE'); }
+function getNextSourceCd() { return getNextCd_('m_source', 'SO'); }
+function getNextMaterialCd() { return getNextCd_('m_material', 'G'); }
+function getNextUserCd() { return getNextCd_('m_user', 'U'); }
 
 function getNextCd_(sheetName, prefix) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   const lastRow = getRealLastRow(sheet, 1);
-  if (lastRow < 2) return prefix + '001';
+  if (lastRow < 2) return prefix + '0001';
   
   const cds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   let maxNum = 0;
@@ -162,7 +177,7 @@ function getNextCd_(sheetName, prefix) {
       if (!isNaN(num) && num > maxNum) maxNum = num;
     }
   });
-  return prefix + String(maxNum + 1).padStart(3, '0');
+  return prefix + String(maxNum + 1).padStart(4, '0');
 }
 
 
@@ -216,37 +231,61 @@ function saveMaterial(data) {
 function saveSource(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sSheet = ss.getSheetByName('m_source');
-  const dSheet = ss.getSheetByName('m_source_detail');
   
-  // 親データの保存
+  // ★シート名を 'm_source_recipe' に修正
+  let dSheet = ss.getSheetByName('m_source_recipe');
+  if (!dSheet) {
+    dSheet = ss.insertSheet('m_source_recipe');
+    dSheet.appendRow(['ソースCD', '構成品CD', '構成名', '使用量', '原料原価']);
+  }
+  
   if (data.mode === 'new') {
     const nextRow = getRealLastRow(sSheet, 1) + 1;
-    sSheet.getRange(nextRow, 1, 1, 4).setValues([[ data.sourceCd, data.sourceName, data.yieldAmount, data.displayFlag ]]);
+    sSheet.getRange(nextRow, 1, 1, 3).setValues([[ data.sourceCd, data.sourceName, data.yieldAmount ]]);
+    sSheet.getRange(nextRow, 6).setValue(data.displayFlag);
+    
+    if (nextRow > 2) {
+      const prevFormulas = sSheet.getRange(nextRow - 1, 4, 1, 2).getFormulas();
+      if (prevFormulas[0][0] || prevFormulas[0][1]) {
+        sSheet.getRange(nextRow, 4, 1, 2).setFormulas(prevFormulas);
+      }
+    }
   } else {
     const sLast = getRealLastRow(sSheet, 1);
     const sCds = sSheet.getRange(1, 1, sLast, 1).getValues();
     let targetRow = -1;
     for (let i = 0; i < sCds.length; i++) {
-      if (sCds[i][0] === data.sourceCd) { targetRow = i + 1; break; }
+      if (String(sCds[i][0]).trim().toLowerCase() === String(data.sourceCd).trim().toLowerCase()) { targetRow = i + 1; break; }
     }
     if (targetRow !== -1) {
-      sSheet.getRange(targetRow, 2, 1, 3).setValues([[ data.sourceName, data.yieldAmount, data.displayFlag ]]);
+      sSheet.getRange(targetRow, 2, 1, 2).setValues([[ data.sourceName, data.yieldAmount ]]);
+      sSheet.getRange(targetRow, 6).setValue(data.displayFlag);
     }
-    // 古い構成を削除
     const dLast = getRealLastRow(dSheet, 1);
     if (dLast >= 2) {
       const dCds = dSheet.getRange(2, 1, dLast - 1, 1).getValues();
       for (let i = dCds.length - 1; i >= 0; i--) {
-        if (dCds[i][0] === data.sourceCd) { dSheet.deleteRow(i + 2); }
+        if (String(dCds[i][0]).trim().toLowerCase() === String(data.sourceCd).trim().toLowerCase()) { dSheet.deleteRow(i + 2); }
       }
     }
   }
   
-  // 構成（レシピ）の保存
   if (data.ingredients && data.ingredients.length > 0) {
     const nextD = getRealLastRow(dSheet, 1) + 1;
-    const writeData = data.ingredients.map(ing => [data.sourceCd, ing.cd, ing.amount]);
-    dSheet.getRange(nextD, 1, writeData.length, 3).setValues(writeData);
+    // ★C列（構成名）とE列（原価）の関数を消さないよう、1列ずつ書き込む
+    for(let i = 0; i < data.ingredients.length; i++) {
+      dSheet.getRange(nextD + i, 1).setValue(data.sourceCd);
+      dSheet.getRange(nextD + i, 2).setValue(data.ingredients[i].cd);
+      dSheet.getRange(nextD + i, 4).setValue(data.ingredients[i].amount);
+    }
+    
+    // 上の行（2行目）に関数があれば、新しい行にコピーする
+    if (nextD > 2) {
+      const cFormula = dSheet.getRange(2, 3).getFormula();
+      const eFormula = dSheet.getRange(2, 5).getFormula();
+      if (cFormula) dSheet.getRange(nextD, 3, data.ingredients.length, 1).setFormula(cFormula);
+      if (eFormula) dSheet.getRange(nextD, 5, data.ingredients.length, 1).setFormula(eFormula);
+    }
   }
   return { success: true, mode: data.mode };
 }
@@ -255,7 +294,13 @@ function saveSource(data) {
 function saveRecipe(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const pSheet = ss.getSheetByName('m_product');
-  const rSheet = ss.getSheetByName('m_recipe');
+  
+  // ★シート名を 'm_product_recipe' に修正
+  let rSheet = ss.getSheetByName('m_product_recipe');
+  if (!rSheet) {
+    rSheet = ss.insertSheet('m_product_recipe');
+    rSheet.appendRow(['製品CD', '構成品CD', '構成名', '使用量', '原価']);
+  }
   
   if (data.mode === 'new') {
     const nextRow = getRealLastRow(pSheet, 1) + 1;
@@ -265,7 +310,7 @@ function saveRecipe(data) {
     const pCds = pSheet.getRange(1, 1, pLast, 1).getValues();
     let targetRow = -1;
     for (let i = 0; i < pCds.length; i++) {
-      if (pCds[i][0] === data.productCd) { targetRow = i + 1; break; }
+      if (String(pCds[i][0]).trim().toLowerCase() === String(data.productCd).trim().toLowerCase()) { targetRow = i + 1; break; }
     }
     if (targetRow !== -1) {
       pSheet.getRange(targetRow, 2, 1, 2).setValues([[ data.productName, data.price ]]);
@@ -275,15 +320,27 @@ function saveRecipe(data) {
     if (rLast >= 2) {
       const rCds = rSheet.getRange(2, 1, rLast - 1, 1).getValues();
       for (let i = rCds.length - 1; i >= 0; i--) {
-        if (rCds[i][0] === data.productCd) { rSheet.deleteRow(i + 2); }
+        if (String(rCds[i][0]).trim().toLowerCase() === String(data.productCd).trim().toLowerCase()) { rSheet.deleteRow(i + 2); }
       }
     }
   }
   
   if (data.ingredients && data.ingredients.length > 0) {
     const nextR = getRealLastRow(rSheet, 1) + 1;
-    const writeData = data.ingredients.map(ing => [data.productCd, ing.cd, ing.amount]);
-    rSheet.getRange(nextR, 1, writeData.length, 3).setValues(writeData);
+    // ★C列（構成名）とE列（原価）の関数を消さないよう、1列ずつ書き込む
+    for(let i = 0; i < data.ingredients.length; i++) {
+      rSheet.getRange(nextR + i, 1).setValue(data.productCd);
+      rSheet.getRange(nextR + i, 2).setValue(data.ingredients[i].cd);
+      rSheet.getRange(nextR + i, 4).setValue(data.ingredients[i].amount);
+    }
+    
+    // 上の行（2行目）に関数があれば、新しい行にコピーする
+    if (nextR > 2) {
+      const cFormula = rSheet.getRange(2, 3).getFormula();
+      const eFormula = rSheet.getRange(2, 5).getFormula();
+      if (cFormula) rSheet.getRange(nextR, 3, data.ingredients.length, 1).setFormula(cFormula);
+      if (eFormula) rSheet.getRange(nextR, 5, data.ingredients.length, 1).setFormula(eFormula);
+    }
   }
   return { success: true, mode: data.mode };
 }
@@ -597,8 +654,17 @@ function getUserList() {
   if (!sheet) return [];
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return [];
-  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  return data.map(row => String(row[0])).filter(val => val !== "");
+  
+  // ★A列(ID)とB列(名前)の2列分を取得する
+  const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  let list = [];
+  data.forEach(row => {
+    if (row[0]) {
+      // idとnameをセットにして返す
+      list.push({ id: String(row[0]), name: String(row[1] || row[0]) });
+    }
+  });
+  return list;
 }
 
 // --- ログインチェック ---
