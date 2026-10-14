@@ -555,6 +555,8 @@ function getZaicoInventoryReport() {
   const matMap = {};
   for (let i = 1; i < mData.length; i++) {
     const zCdStr = String(mData[i][10] || '').trim();
+    const category = mData[i][12] || '食品';
+
     if (zCdStr) {
       // 複数のZaicoCDに対応
       const zCds = zCdStr.split(/[,、]/).map(s => s.trim()).filter(s => s !== "");
@@ -564,7 +566,8 @@ function getZaicoInventoryReport() {
           sysName: mData[i][1],
           unit: mData[i][3],
           unitCost: Number(mData[i][8]) || 0,
-          zaicoConv: Number(mData[i][11]) || 1
+          zaicoConv: Number(mData[i][11]) || 1,
+          category: category
         };
       });
     }
@@ -591,7 +594,9 @@ function getZaicoInventoryReport() {
       const zCd = String(zData[i][1] || '').trim();
       const zName = zData[i][2];
       const stockQty = Number(zData[i][4]) || 0;
-      
+      if (stockQty <= 0) {
+        continue;
+      }
       let matchStatus = false;
       let sysCd = "-";
       let sysName = zName;
@@ -600,6 +605,10 @@ function getZaicoInventoryReport() {
       let displayQty = stockQty;
       
       if (zCd && matMap[zCd]) {
+        if (matMap[zCd].category === '備品') {
+          continue; 
+        }
+        
         matchStatus = true;
         sysCd = matMap[zCd].sysCd;
         sysName = matMap[zCd].sysName;
