@@ -142,7 +142,7 @@
             <div><label class="block text-sm font-bold mb-1 text-gray-600">登録者</label><input type="text" id="daily-staff" class="w-full p-3 border rounded bg-gray-200 font-bold text-gray-500" readonly></div>
             <div>
               <label class="block text-sm font-bold mb-1 text-gray-600">区分</label>
-              <select id="daily-category" onchange="updateDailyDropdowns()" class="w-full p-3 border rounded bg-white font-bold">
+              <select id="daily-category" onchange="updateDailyDropdowns(); onChangeDailyCategory();" class="w-full p-3 border rounded bg-white font-bold">
                 <option value="廃棄">🗑️ 廃棄</option>
                 <option value="試食">🥄 試食</option>
               </select>
@@ -250,6 +250,23 @@
         <!-- [C] 原料マスター -->
         <div id="view-material" class="hidden">
           <div class="bg-white p-4 rounded-lg shadow-sm border mb-4">
+        <!-- ★追加：ソース引用エリア -->
+          <div class="bg-yellow-50 p-3 rounded border border-yellow-300 mb-4">
+               <label class="block text-xs font-bold text-yellow-800 mb-1">💡 作成したソースを原料として引用する</label>
+               <div class="flex gap-2">
+                 <!-- ① 検索ボックスを追加 -->
+                 <input type="text" id="search-import-source" placeholder="🔍検索" class="w-1/4 p-2 border rounded text-sm" oninput="populateSourceImportDropdown()">
+                 
+                 <!-- ② セレクトボックス -->
+                 <select id="mat-import-source" class="w-2/4 p-2 border rounded bg-white text-sm" onclick="populateSourceImportDropdown()">
+                   <option value="">ソースを選択してください</option>
+                 </select>
+                 
+                 <!-- ③ 反映ボタン -->
+                 <button onclick="importSourceToMaterial()" class="w-1/4 whitespace-nowrap bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2 rounded text-sm shadow">引用反映</button>
+               </div>
+            </div>
+
             <h3 class="font-bold text-red-500 mb-3">原料情報</h3>
             <div id="mat-edit-select" class="mb-4 hidden p-3 bg-yellow-100 rounded border border-yellow-300">
                <label class="block text-xs text-yellow-800 mb-1 font-bold">編集する原料を選択</label>
@@ -537,8 +554,21 @@
       document.getElementById('daily-reason').value = ''; 
       if(document.getElementById('search-daily-item')) document.getElementById('search-daily-item').value = ''; 
       updateDailyDropdowns(); 
+      onChangeDailyCategory();
     }
-    
+    // ★新規追加：プルダウンを変更した時に理由欄を自動で切り替える関数
+    function onChangeDailyCategory() {
+      const selectedCategory = document.getElementById('daily-category').value;
+      const reasonInput = document.getElementById('daily-reason');
+      
+    // 理由欄が空っぽ、または「廃棄」「試食」のままなら、選んだ言葉で上書きする
+      if (reasonInput.value === '' || reasonInput.value === '廃棄' || reasonInput.value === '試食') {
+        reasonInput.value = selectedCategory;
+      }
+    }    
+
+
+
     function updateDailyDropdowns() { 
       const categoryObj = document.getElementById('daily-category'); 
       const itemTypeObj = document.getElementById('daily-item-type'); 
@@ -605,18 +635,44 @@
       const btn = document.getElementById('daily-save-btn'); 
       btn.disabled = true; btn.textContent = '保存中...'; 
       
+      // ▼▼ ここから分岐 ▼▼
       if (mode === 'edit') { 
-        google.script.run.withSuccessHandler(function(res) { 
+        // 【編集モードの場合】
+        google.script.run
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = '変更を上書き保存';
+          alert("保存中にエラーが発生しました:\n" + err.message);
+        })
+        .withSuccessHandler(function(res) { 
           btn.disabled = false; btn.textContent = '変更を上書き保存'; 
           if(res.success) { alert("記録を更新しました！"); reloadDailyRecordsList(); clearDailyForm(); } 
         }).updateDailyRecord(payload); 
+
       } else { 
-        google.script.run.withSuccessHandler(function(res) { 
+        // 【新規登録モードの場合】 ★このブロックが消えていました！
+        google.script.run
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = '記録を登録する';
+          alert("保存中にエラーが発生しました:\n" + err.message);
+        })
+        .withSuccessHandler(function(res) { 
           btn.disabled = false; btn.textContent = '記録を登録する'; 
           if(res.success) { 
             alert(`${category}の記録を保存しました！`); 
+            
+            // ① 数量を空にする
             document.getElementById('daily-qty').value = ''; 
-            document.getElementById('daily-reason').value = ''; 
+            
+            // ② 検索欄と品名をリセットする
+            if(document.getElementById('search-daily-item')) {
+              document.getElementById('search-daily-item').value = ''; 
+            }
+            document.getElementById('daily-item-cd').value = ''; 
+            updateDailyDropdowns(); 
+            
+            // ③ 理由欄を空にして、自動セット
+            document.getElementById('daily-reason').value = '';
+            try { onChangeDailyCategory(); } catch(e) { console.log(e); }
           } 
         }).saveDailyRecord(payload); 
       } 
@@ -732,7 +788,8 @@
           if (item.category !== '備品') {
             if (filterType === 'all' || item.type === filterType) { 
               if(keyword === '' || item.name.toLowerCase().includes(keyword)) {
-                html += `<option value="${item.cd}">[${item.type}] ${item.name}</option>`; 
+                const supp = (item.type === '原料' && item.supplier) ? `（${item.supplier}）` : '';
+               html += `<option value="${item.cd}">[${item.type}] ${item.name}${supp}</option>`;
               }
             } 
           }
@@ -760,14 +817,39 @@
           <select class="w-full p-2 border rounded bg-white ingredient-cd">${buildOptionsHTML('all')}</select>
         </div>
         <div class="w-24">
-          <input type="number" class="w-full p-2 border rounded ingredient-amount" placeholder="g/ml" value="${initialAmount}">
+          <!-- ★ 追加：数字が入力・変更されるたびに自動計算を呼び出す -->
+          <input type="number" class="w-full p-2 border rounded ingredient-amount" placeholder="g/ml" value="${initialAmount}" oninput="calcSourceYield()">
         </div>
-        <button onclick="this.parentElement.remove()" class="text-red-500 font-bold px-2 rounded">×</button>
-      `; 
+        <!-- ★ 追加：行が削除されたときも自動計算を呼び出す -->
+        <button onclick="this.parentElement.remove(); calcSourceYield();" class="text-red-500 font-bold px-2 rounded">×</button>
+      `;
       if (initialCd) { setTimeout(() => { row.querySelector('.ingredient-cd').value = initialCd; }, 100); } 
       container.appendChild(row); 
     }
-    
+    // ==========================================
+    // ★新規追加：ソースの出来上がり量を自動計算
+    // ==========================================
+    function calcSourceYield() {
+      // 現在開いているのが「ソースマスター」画面でなければ何もしない（製品マスターでの誤作動防止）
+      const viewSource = document.getElementById('view-source');
+      if (viewSource && viewSource.classList.contains('hidden')) return;
+
+      const container = document.getElementById('source-ingredient-list');
+      if (!container) return;
+      
+      const amounts = container.querySelectorAll('.ingredient-amount');
+      let sum = 0;
+      
+      // レシピ行の使用量をすべて足し算する
+      amounts.forEach(input => {
+        sum += Number(input.value) || 0;
+      });
+      
+      // 合計を「出来上がり量」の入力欄にセットする
+      document.getElementById('source-yield').value = sum;
+    }
+
+
     function changeFilter(elem) { 
       const row = elem.closest('.ingredient-row'); 
       const filterType = row.querySelector('.ingredient-type-filter').value; 
@@ -1198,6 +1280,53 @@
         document.getElementById('report-table-body').innerHTML = html; 
       }).getZaicoInventoryReport(); 
     }
+    // ==========================================
+    // ★追加：ソース引用用のプルダウン生成と反映処理
+    // ==========================================
+    function populateSourceImportDropdown() {
+      const select = document.getElementById('mat-import-source');
+      const searchBox = document.getElementById('search-import-source');
+      
+      // 検索キーワードを取得（大文字小文字を区別しないように小文字化）
+      const keyword = searchBox ? searchBox.value.toLowerCase() : '';
+      
+      // 今選ばれている値を記憶しておく（再描画で消えないようにするため）
+      const currentValue = select.value;
+      
+      let html = '<option value="">ソースを選択してください</option>';
+      masterDataList.forEach(item => {
+        if (item.type === 'ソース' && !item.isHidden) {
+          // キーワードが空っぽ、またはソース名にキーワードが含まれている場合だけリストに追加
+          if (keyword === '' || item.name.toLowerCase().includes(keyword)) {
+            html += `<option value="${item.cd}">${item.name}</option>`;
+          }
+        }
+      });
+      select.innerHTML = html;
+      
+      // 絞り込み後も、元々選んでいたソースがリストに残っていれば選択状態を戻す
+      if (currentValue) {
+        select.value = currentValue;
+      }
+    }
+
+    function importSourceToMaterial() {
+      const cd = document.getElementById('mat-import-source').value;
+      if (!cd) { alert("引用するソースを選択してください。"); return; }
+      
+      // 選んだソースの情報を取得
+      const sourceData = masterDataList.find(item => item.cd === cd);
+      if (sourceData) {
+        document.getElementById('mat-name').value = sourceData.name;
+        document.getElementById('mat-kikaku').value = sourceData.yieldAmt || '';
+        document.getElementById('mat-priceEx').value = sourceData.unitPrice ? sourceData.unitPrice.toFixed(1) : '';
+        document.getElementById('mat-unit').value = 'g'; // 単位は一旦gにセット
+        document.getElementById('mat-supplier').value = '自作ソース'; // 納入業者を分かりやすく
+        document.getElementById('mat-category').value = '食品';
+        
+        alert(`「${sourceData.name}」の情報を入力欄に反映しました！`);
+      }
+    }    
   </script>
 </body>
 </html>

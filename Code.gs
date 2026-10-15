@@ -15,8 +15,16 @@ function getIngredientMaster() {
     const sData = sSheet.getDataRange().getValues();
     for(let i = 1; i < sData.length; i++) {
       if(sData[i][0]) {
-        // ソースはすべて「食品」扱い
-        list.push({ cd: sData[i][0], name: sData[i][1], type: 'ソース', isHidden: sData[i][3] == 99, category: '食品' });
+        list.push({ 
+          cd: sData[i][0], 
+          name: sData[i][1], 
+          type: 'ソース', 
+          isHidden: sData[i][5] == 99, 
+          category: '食品',
+          yieldAmt: sData[i][2] || 0, // 出来上がり量を追加
+          unitPrice: sData[i][3] || 0,
+          cost: sData[i][4] || 0      // 原料原価を追加
+        });
       }
     }
   }
@@ -27,9 +35,15 @@ function getIngredientMaster() {
     const mData = mSheet.getDataRange().getValues();
     for(let i = 1; i < mData.length; i++) {
       if(mData[i][0]) {
-        // M列（12番目）の分類。空欄は「食品」として扱う
         const cat = mData[i][12] || '食品';
-        list.push({ cd: mData[i][0], name: mData[i][1], type: '原料', isHidden: mData[i][9] == 99, category: cat });
+        list.push({ 
+          cd: mData[i][0], 
+          name: mData[i][1], 
+          type: '原料', 
+          isHidden: mData[i][9] == 99, 
+          category: cat,
+          supplier: mData[i][5] || ''  // 納入業者を追加
+        });
       }
     }
   }
@@ -244,12 +258,13 @@ function saveSource(data) {
     sSheet.getRange(nextRow, 1, 1, 3).setValues([[ data.sourceCd, data.sourceName, data.yieldAmount ]]);
     sSheet.getRange(nextRow, 6).setValue(data.displayFlag);
     
-    if (nextRow > 2) {
-      const prevFormulas = sSheet.getRange(nextRow - 1, 4, 1, 2).getFormulas();
-      if (prevFormulas[0][0] || prevFormulas[0][1]) {
-        sSheet.getRange(nextRow, 4, 1, 2).setFormulas(prevFormulas);
-      }
+  if (nextRow > 2) {
+      // ★修正：文字列ではなく「標準のコピペ」を使って上の行から数式をコピーする
+      const srcRange = sSheet.getRange(nextRow - 1, 4, 1, 2);
+      const dstRange = sSheet.getRange(nextRow, 4, 1, 2);
+      srcRange.copyTo(dstRange, SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
+    
   } else {
     const sLast = getRealLastRow(sSheet, 1);
     const sCds = sSheet.getRange(1, 1, sLast, 1).getValues();
@@ -281,10 +296,10 @@ function saveSource(data) {
     
     // 上の行（2行目）に関数があれば、新しい行にコピーする
     if (nextD > 2) {
-      const cFormula = dSheet.getRange(2, 3).getFormula();
-      const eFormula = dSheet.getRange(2, 5).getFormula();
-      if (cFormula) dSheet.getRange(nextD, 3, data.ingredients.length, 1).setFormula(cFormula);
-      if (eFormula) dSheet.getRange(nextD, 5, data.ingredients.length, 1).setFormula(eFormula);
+      const cFormula = dSheet.getRange(2, 3).getFormulaR1C1();
+      const eFormula = dSheet.getRange(2, 5).getFormulaR1C1();
+      if (cFormula) dSheet.getRange(nextD, 3, data.ingredients.length, 1).setFormulaR1C1(cFormula);
+      if (eFormula) dSheet.getRange(nextD, 5, data.ingredients.length, 1).setFormulaR1C1(eFormula);
     }
   }
   return { success: true, mode: data.mode };
@@ -335,11 +350,10 @@ function saveRecipe(data) {
     }
     
     // 上の行（2行目）に関数があれば、新しい行にコピーする
-    if (nextR > 2) {
-      const cFormula = rSheet.getRange(2, 3).getFormula();
-      const eFormula = rSheet.getRange(2, 5).getFormula();
-      if (cFormula) rSheet.getRange(nextR, 3, data.ingredients.length, 1).setFormula(cFormula);
-      if (eFormula) rSheet.getRange(nextR, 5, data.ingredients.length, 1).setFormula(eFormula);
+    if (nextD > 2) {
+      // ★修正：2行目の正しい数式を「コピペ」で新規行へ一括貼り付けする
+      dSheet.getRange(2, 3).copyTo(dSheet.getRange(nextD, 3, data.ingredients.length, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
+      dSheet.getRange(2, 5).copyTo(dSheet.getRange(nextD, 5, data.ingredients.length, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMULA, false);
     }
   }
   return { success: true, mode: data.mode };
