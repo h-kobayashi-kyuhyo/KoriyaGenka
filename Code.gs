@@ -405,11 +405,13 @@ function getDailyRecordList(startDateStr, endDateStr) {
         list.push({
           key: row[0],
           label: `[${dStr}] ${row[4]} - ${row[7]} (${row[8]})`,
-          dateObj: rDate
+          // ★修正：Date型ではなく数値(ミリ秒)に変換して返す（エラー回避のため）
+          dateObj: rDate.getTime() 
         });
       }
     }
   });
+  // 数値で並び替える
   list.sort((a, b) => b.dateObj - a.dateObj);
   return list;
 }
@@ -425,8 +427,18 @@ function getDailyRecordDetail(key) {
   const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
   for (let i = 0; i < data.length; i++) {
     if (data[i][0] === key) {
+      // ★修正：日付データを「yyyy-MM-dd」の文字列に変換して返す
+      let dObj = data[i][2];
+      let dStr = "";
+      if (dObj) {
+        if (dObj instanceof Date) {
+          dStr = Utilities.formatDate(dObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+        } else {
+          dStr = String(dObj);
+        }
+      }
       return {
-        date: data[i][2],
+        date: dStr,
         staffName: data[i][3],
         category: data[i][4],
         itemType: data[i][5],
@@ -699,10 +711,12 @@ function checkLogin(id, pass) {
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return { success: false, message: 'ユーザーが登録されていません。' };
   
-  const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][0]) === String(id) && String(data[i][2]) === String(pass)) {
-      return { success: true, staffName: data[i][1] };
+      // ★ 権限（D列＝data[i][3]）も一緒に返す
+      const role = data[i][3] || '一般'; 
+      return { success: true, staffName: data[i][1], role: role };
     }
   }
   return { success: false, message: 'IDまたはパスワードが間違っています。' };
@@ -745,4 +759,79 @@ function saveUser(data) {
     }
   }
   return { success: true };
+}
+// ===================================================
+// 一覧・照会画面用のデータ取得
+// ===================================================
+function getInquiryData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const data = { materials: [], sources: [], products: [], productRecipes: [] };
+  
+  // 1. 原料データの取得（税込金額はH列(7)を想定）
+  const mSheet = ss.getSheetByName('m_material');
+  if (mSheet) {
+    const mData = mSheet.getDataRange().getValues();
+    for (let i = 1; i < mData.length; i++) {
+      if (mData[i][0] && mData[i][9] != 99) { // 非表示以外
+        data.materials.push({
+          name: mData[i][1],
+          kikaku: mData[i][2],
+          unit: mData[i][3],
+          supplier: mData[i][5],
+          priceIncTax: mData[i][7] // H列(税込み金額)
+        });
+      }
+    }
+  }
+  
+  // 2. ソースデータの取得
+  const sSheet = ss.getSheetByName('m_source');
+  if (sSheet) {
+    const sData = sSheet.getDataRange().getValues();
+    for (let i = 1; i < sData.length; i++) {
+      if (sData[i][0] && sData[i][5] != 99) {
+        data.sources.push({
+          name: sData[i][1],
+          yieldAmt: sData[i][2],
+          unitPrice: sData[i][3] // D列(ソース単価)
+        });
+      }
+    }
+  }
+  
+  // 3. 製品データの取得
+  const pSheet = ss.getSheetByName('m_product');
+  if (pSheet) {
+    const pData = pSheet.getDataRange().getValues();
+    for (let i = 1; i < pData.length; i++) {
+      if (pData[i][0] && pData[i][5] != 99) {
+        data.products.push({
+          cd: pData[i][0],
+          name: pData[i][1],
+          price: pData[i][2],
+          totalCost: pData[i][3], // D列(原価合計)
+          costRate: pData[i][4]   // E列(原価率)
+        });
+      }
+    }
+  }
+  
+  // 4. 製品レシピ（構成品）データの取得
+  const prSheet = ss.getSheetByName('m_product_recipe');
+  if (prSheet) {
+    const prData = prSheet.getDataRange().getValues();
+    for (let i = 1; i < prData.length; i++) {
+      if (prData[i][0]) {
+        data.productRecipes.push({
+          productCd: prData[i][0],
+          itemCd: prData[i][1],
+          itemName: prData[i][2],
+          amount: prData[i][3],
+          cost: prData[i][4]
+        });
+      }
+    }
+  }
+  
+  return data;
 }

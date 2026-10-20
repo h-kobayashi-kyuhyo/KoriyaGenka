@@ -61,6 +61,9 @@
           <button onclick="openReport()" style="background-color: #f87171;" class="w-full py-5 text-white font-bold rounded-xl shadow-md text-lg transition flex items-center justify-center hover:opacity-90">
             <span class="mr-2">📊</span> 棚卸残高レポート (Zaico連携)
           </button>
+          <button onclick="openInquiry()" class="w-full py-5 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-xl shadow-md transition flex justify-center items-center gap-2">
+            <span>📋</span>マスター一覧・照会</span>
+          </button>
           <button onclick="openMaster()" class="w-full py-5 bg-gray-800 hover:bg-gray-900 text-white font-bold rounded-xl shadow-md text-lg transition flex items-center justify-center">
             <span class="mr-2">⚙️</span> マスター管理
           </button>
@@ -174,8 +177,58 @@
           </div>
         </div>
       </div>
+        <!-- ========================================== -->
+        <!--5- [一覧・照会画面] -->
+        <!-- ========================================== -->
+        <div id="content-inquiry" class="hidden">
+          <h2 class="text-xl font-bold mb-4 border-b pb-2 flex justify-between items-center">
+            マスター・レシピ照会
+            <button onclick="backToMenu()" class="text-sm bg-gray-500 text-white py-1 px-3 rounded">◀ メニューに戻る</button>
+          </h2>
+          
+          <!-- タブ切り替え -->
+          <div class="flex gap-2 mb-4 border-b">
+            <button onclick="switchInqTab('material')" id="tab-inq-material" class="py-2 px-4 font-bold border-b-2 border-red-500 text-red-600">原料一覧</button>
+            <button onclick="switchInqTab('source')" id="tab-inq-source" class="py-2 px-4 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">ソース一覧</button>
+            <button onclick="switchInqTab('product')" id="tab-inq-product" class="py-2 px-4 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700">製品詳細（レシピ）</button>
+          </div>
+          
+          <!-- ① 原料一覧 -->
+          <div id="inq-view-material" class="bg-white p-4 rounded shadow-sm overflow-x-auto">
+            <table class="w-full text-sm text-left border-collapse">
+              <thead>
+                <tr class="bg-gray-100 border-b">
+                  <th class="p-2">原料名</th><th class="p-2">規格</th><th class="p-2">単位</th><th class="p-2">納入業者</th><th class="p-2 text-right">金額(税込)</th>
+                </tr>
+              </thead>
+              <tbody id="inq-tbody-material"></tbody>
+            </table>
+          </div>
+          
+          <!-- ② ソース一覧 -->
+          <div id="inq-view-source" class="bg-white p-4 rounded shadow-sm overflow-x-auto hidden">
+            <table class="w-full text-sm text-left border-collapse">
+              <thead>
+                <tr class="bg-gray-100 border-b">
+                  <th class="p-2">ソース名</th><th class="p-2 text-right">作成量</th><th class="p-2 text-right">ソース単価</th>
+                </tr>
+              </thead>
+              <tbody id="inq-tbody-source"></tbody>
+            </table>
+          </div>
+          
+          <!-- ③ 製品詳細（画像風） -->
+          <div id="inq-view-product" class="bg-white p-4 rounded shadow-sm hidden">
+            <div class="mb-4 flex items-center gap-4 border p-3 rounded bg-blue-50">
+              <label class="font-bold text-sm">かき氷 製品名選択</label>
+              <select id="inq-product-select" class="p-2 border rounded bg-white w-1/2" onchange="renderInqProduct()"></select>
+            </div>
+            <div id="inq-product-info"></div>
+          </div>
+        </div>
 
-      <!-- ５．マスター管理フォーム -->
+
+      <!-- 6．マスター管理フォーム -->
       <div id="content-recipe" class="hidden">
         <button onclick="backToMenu()" class="mb-4 text-sm text-gray-600 hover:text-gray-900 underline flex items-center"><span class="mr-1">◀</span> メニューへ戻る</button>
         <div class="flex gap-2 mb-4">
@@ -376,11 +429,27 @@
           document.getElementById('app-view').classList.remove('hidden'); 
           setTodayDate(); 
           loadMasterData(); 
-          document.getElementById('content-menu').classList.remove('hidden'); 
-          document.getElementById('content-daily').classList.add('hidden'); 
-          document.getElementById('content-sales').classList.add('hidden'); 
-          document.getElementById('content-report').classList.add('hidden'); 
-          document.getElementById('content-recipe').classList.add('hidden'); 
+          
+          // ★ 追加：権限による画面の振り分け
+          if (res.role !== '管理者') {
+            // 【一般ユーザー】 メニューを見せず、直接「日次記録」だけを開く
+            document.getElementById('content-menu').classList.add('hidden'); 
+            document.getElementById('content-daily').classList.remove('hidden'); 
+            document.getElementById('content-sales').classList.add('hidden'); 
+            document.getElementById('content-report').classList.add('hidden'); 
+            document.getElementById('content-recipe').classList.add('hidden'); 
+            
+            // ※もし日次記録画面に「メニューに戻る」ボタンがあれば、ここで非表示にします
+            // 例: document.getElementById('btn-back-to-menu').style.display = 'none';
+          } else {
+            // 【管理者】 通常通りメインメニューを開く
+            document.getElementById('content-menu').classList.remove('hidden'); 
+            document.getElementById('content-daily').classList.add('hidden'); 
+            document.getElementById('content-sales').classList.add('hidden'); 
+            document.getElementById('content-report').classList.add('hidden'); 
+            document.getElementById('content-recipe').classList.add('hidden'); 
+          }
+          
         } else { 
           err.textContent = res.message; 
           err.classList.remove('hidden'); 
@@ -1326,7 +1395,133 @@
         
         alert(`「${sourceData.name}」の情報を入力欄に反映しました！`);
       }
-    }    
+    }
+  // ==========================================
+    // 一覧・照会画面の制御
+    // ==========================================
+    let inquiryData = null; // データを保持する変数
+
+   function openInquiry() {
+      // ★修正：メインメニューを確実に隠す！
+      document.getElementById('content-menu').classList.add('hidden');
+      
+      // その他の画面も念のため隠す
+      document.querySelectorAll('#app-view > div').forEach(div => div.classList.add('hidden'));
+      
+      // 一覧・照会画面だけを表示する
+      document.getElementById('content-inquiry').classList.remove('hidden');
+      
+      // ボタンを「読込中」にしてデータを取得
+      document.getElementById('tab-inq-material').textContent = "読込中...";
+      
+      google.script.run.withSuccessHandler(function(data) {
+        inquiryData = data;
+        document.getElementById('tab-inq-material').textContent = "原料一覧";
+        switchInqTab('material'); // 最初は原料タブを開く
+        
+        // 製品プルダウンを作成
+        let pOptions = '<option value="">製品を選択してください</option>';
+        data.products.forEach(p => {
+          pOptions += `<option value="${p.cd}">${p.name}</option>`;
+        });
+        document.getElementById('inq-product-select').innerHTML = pOptions;
+        
+      }).getInquiryData();
+    }
+
+    function switchInqTab(tabName) {
+      // タブの色をリセット
+      ['material', 'source', 'product'].forEach(t => {
+        const btn = document.getElementById(`tab-inq-${t}`);
+        const view = document.getElementById(`inq-view-${t}`);
+        btn.className = "py-2 px-4 font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700";
+        view.classList.add('hidden');
+      });
+      
+      // 選んだタブをアクティブにする
+      const activeBtn = document.getElementById(`tab-inq-${tabName}`);
+      const activeView = document.getElementById(`inq-view-${tabName}`);
+      activeBtn.className = "py-2 px-4 font-bold border-b-2 border-blue-500 text-blue-600";
+      activeView.classList.remove('hidden');
+      
+      // データの描画
+      if (tabName === 'material') renderInqMaterial();
+      if (tabName === 'source') renderInqSource();
+    }
+
+    function renderInqMaterial() {
+      if (!inquiryData) return;
+      let html = '';
+      inquiryData.materials.forEach(m => {
+        const price = m.priceIncTax ? Number(m.priceIncTax).toFixed(1) : '';
+        html += `<tr class="border-b hover:bg-gray-50">
+          <td class="p-2">${m.name}</td><td class="p-2">${m.kikaku}</td><td class="p-2">${m.unit}</td>
+          <td class="p-2">${m.supplier}</td><td class="p-2 text-right">${price}</td>
+        </tr>`;
+      });
+      document.getElementById('inq-tbody-material').innerHTML = html;
+    }
+
+    function renderInqSource() {
+      if (!inquiryData) return;
+      let html = '';
+      inquiryData.sources.forEach(s => {
+        const price = s.unitPrice ? Number(s.unitPrice).toFixed(1) : '';
+        html += `<tr class="border-b hover:bg-gray-50">
+          <td class="p-2">${s.name}</td><td class="p-2 text-right">${s.yieldAmt}</td><td class="p-2 text-right">${price}</td>
+        </tr>`;
+      });
+      document.getElementById('inq-tbody-source').innerHTML = html;
+    }
+
+    function renderInqProduct() {
+      if (!inquiryData) return;
+      const cd = document.getElementById('inq-product-select').value;
+      const infoDiv = document.getElementById('inq-product-info');
+      if (!cd) { infoDiv.innerHTML = ''; return; }
+      
+      const p = inquiryData.products.find(x => x.cd === cd);
+      if (!p) return;
+      
+      // レシピ構成品の抽出
+      const recipes = inquiryData.productRecipes.filter(x => x.productCd === cd);
+      let recipeHtml = '';
+      recipes.forEach(r => {
+        const cost = r.cost ? Number(r.cost).toFixed(1) : '';
+        recipeHtml += `<tr class="border-b">
+          <td class="p-2">${r.itemCd}</td><td class="p-2">${r.itemName}</td>
+          <td class="p-2 text-right">${r.amount}</td><td class="p-2 text-right">${cost}</td>
+        </tr>`;
+      });
+      const displayTotalCost = p.totalCost ? Number(p.totalCost).toFixed(1) : '0.0';
+      const rate = p.costRate ? Number(p.costRate * 100).toFixed(1) + '%' : '';
+      
+      infoDiv.innerHTML = `
+        <table class="w-full text-sm text-left border-collapse border mb-4">
+          <tr><th class="p-2 bg-gray-100 border w-1/4">製品CD</th><td class="p-2 border">${p.cd}</td></tr>
+          <tr><th class="p-2 bg-gray-100 border">販売価格</th><td class="p-2 border">${p.price} 円</td></tr>
+          <tr><th class="p-2 bg-gray-100 border">原価合計</th><td class="p-2 border">${displayTotalCost} 円</td></tr>
+          <tr><th class="p-2 bg-gray-100 border">原価率</th><td class="p-2 border">${rate}</td></tr>
+        </table>
+        
+        <table class="w-full text-sm text-left border-collapse border">
+          <thead>
+            <tr class="bg-gray-100 border-b">
+              <th class="p-2 border">構成品CD</th><th class="p-2 border">構成品名</th><th class="p-2 border text-right">使用量</th><th class="p-2 border text-right">原価</th>
+            </tr>
+          </thead>
+          <tbody>${recipeHtml}</tbody>
+        </table>
+      `;
+    }  
+    function backToMenu() {
+      // 一覧・照会画面を隠す
+      document.getElementById('content-inquiry').classList.add('hidden');
+      
+      // メインメニューを表示する
+      document.getElementById('content-menu').classList.remove('hidden');
+    }
+
   </script>
 </body>
 </html>
