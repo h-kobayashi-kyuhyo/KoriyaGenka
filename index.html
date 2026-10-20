@@ -519,6 +519,8 @@
       document.getElementById('content-recipe').classList.add('hidden'); 
       document.getElementById('content-sales').classList.add('hidden'); 
       document.getElementById('content-report').classList.add('hidden'); 
+      const inquiryView = document.getElementById('content-inquiry');
+      if (inquiryView) inquiryView.classList.add('hidden');      
     }
 
     // ==========================================
@@ -635,8 +637,6 @@
         reasonInput.value = selectedCategory;
       }
     }    
-
-
 
     function updateDailyDropdowns() { 
       const categoryObj = document.getElementById('daily-category'); 
@@ -1514,13 +1514,7 @@
         </table>
       `;
     }  
-    function backToMenu() {
-      // 一覧・照会画面を隠す
-      document.getElementById('content-inquiry').classList.add('hidden');
-      
-      // メインメニューを表示する
-      document.getElementById('content-menu').classList.remove('hidden');
-    }
+
 
   </script>
 </body>
