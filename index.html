@@ -81,7 +81,18 @@
           <div id="report-summary" class="mb-6 p-6 bg-teal-50 rounded-lg border border-teal-200 text-center hidden">
             <p class="text-sm text-teal-800 font-bold mb-1">Zaico取得日: <span id="report-date" class="text-lg"></span></p>
             <p class="text-3xl font-extrabold text-teal-900">総在庫金額: <span id="report-total" class="text-4xl"></span> 円</p>
+           <!-- ★追加：出力ボタン -->
+            <div class="flex justify-center gap-4">
+              <button onclick="exportReport('pdf')" id="btn-export-pdf" class="px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-bold rounded shadow-sm flex items-center gap-2">
+                📄 PDF出力 (横向き)
+              </button>
+              <button onclick="exportReport('excel')" id="btn-export-excel" class="px-6 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded shadow-sm flex items-center gap-2">
+                📊 スプレッドシート(Excel)出力
+              </button>
+            </div>
+            <div id="export-loading" class="mt-3 text-sm text-gray-500 font-bold hidden">ファイルを作成しています...しばらくお待ちください。</div>
           </div>
+
           <div id="report-loading" class="text-center py-10 text-gray-500 font-bold hidden">計算中...</div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm text-left text-gray-500 border">
@@ -1349,6 +1360,36 @@
         document.getElementById('report-table-body').innerHTML = html; 
       }).getZaicoInventoryReport(); 
     }
+    // ==========================================
+    // 棚卸レポートの PDF / スプシ 出力機能
+    // ==========================================
+    function exportReport(type) {
+      // 処理中はボタンを押せないようにする
+      document.getElementById('btn-export-pdf').disabled = true;
+      document.getElementById('btn-export-excel').disabled = true;
+      document.getElementById('export-loading').classList.remove('hidden');
+      
+      google.script.run.withSuccessHandler(function(res) {
+        // ボタンを元の状態に戻す
+        document.getElementById('btn-export-pdf').disabled = false;
+        document.getElementById('btn-export-excel').disabled = false;
+        document.getElementById('export-loading').classList.add('hidden');
+        
+        if (!res.success) {
+          alert(res.message);
+          return;
+        }
+        
+        // ユーザーが選んだ形式（PDFかスプシか）に合わせて新しいタブで開く
+        if (type === 'pdf') {
+          window.open(res.pdfUrl, '_blank');
+        } else {
+          window.open(res.ssUrl, '_blank');
+        }
+      }).exportInventoryReport();
+    }
+ 
+
     // ==========================================
     // ★追加：ソース引用用のプルダウン生成と反映処理
     // ==========================================

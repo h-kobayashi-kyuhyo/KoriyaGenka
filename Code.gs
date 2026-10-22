@@ -835,3 +835,75 @@ function getInquiryData() {
   
   return data;
 }
+// ===================================================
+// 棚卸残高レポートの スプレッドシート / PDF 出力処理
+// ===================================================
+function exportInventoryReport() {
+  const res = getZaicoInventoryReport();
+  if (!res.success) return { success: false, message: res.message };
+
+  try {
+    // 1. 新しいスプレッドシートを作成
+    const ssName = `棚卸残高レポート_${res.targetDate.replace(/\//g, "")}`;
+    const ss = SpreadsheetApp.create(ssName);
+    const sheet = ss.getSheets()[0];
+    sheet.setName("棚卸残高");
+
+    // 2. ヘッダー情報の書き込み
+    sheet.getRange("A1").setValue("実地棚卸残高レポート (Zaico連携)").setFontSize(14).setFontWeight("bold");
+    sheet.getRange("A2").setValue(`Zaico取得日: ${res.targetDate}`);
+    sheet.getRange("E2").setValue(`総在庫金額:`).setHorizontalAlignment("right").setFontWeight("bold");
+    sheet.getRange("F2").setValue(`${res.totalValue.toLocaleString()} 円`).setFontWeight("bold").setFontSize(12);
+
+    // 3. テーブルヘッダーの書き込み
+    const header = ["連携状況", "原料名", "Zaico CD", "在庫数", "単価", "在庫金額(円)"];
+    sheet.getRange(4, 1, 1, header.length).setValues([header])
+         .setBackground("#e5e7eb").setFontWeight("bold")
+         .setHorizontalAlignment("center");
+
+    // 4. データ行の書き込み
+    let rowData = [];
+    res.list.forEach(r => {
+      const status = r.match ? "連携済" : "未連携";
+      // 画面用のHTMLタグ（<br>など）を消して綺麗な文字にする
+      let qtyStr = String(r.qtyHtml).replace(/<br>/g, "\n").replace(/<[^>]+>/g, "").trim();
+      
+      rowData.push([
+        status, 
+        r.name, 
+        r.zaicoCd, 
+        qtyStr, 
+        r.match ? Number(r.unitCost) : "", 
+        r.match ? r.itemValue : ""
+      ]);
+    });
+    
+    if (rowData.length > 0) {
+      const dataRange = sheet.getRange(5, 1, rowData.length, header.length);
+      dataRange.setValues(rowData);
+      
+      // 書式設定（折り返し表示・右寄せなど）
+      dataRange.setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+      sheet.getRange(5, 1, rowData.length, 1).setHorizontalAlignment("center");
+      sheet.getRange(5, 4, rowData.length, 3).setHorizontalAlignment("right");
+    }
+
+    // 5. PDFの横幅に収まるように列幅を調整
+    sheet.setColumnWidth(1, 80);
+    sheet.setColumnWidth(2, 250);
+    sheet.setColumnWidth(3, 100);
+    sheet.setColumnWidth(4, 180);
+    sheet.setColumnWidth(5, 80);
+    sheet.setColumnWidth(6, 100);
+
+    // 6. 出力用URLの生成
+    const ssId = ss.getId();
+    const ssUrl = ss.getUrl();
+    // ★PDF出力の裏技パラメータ：portrait=false(横向き), fitw=true(幅1枚に収める)
+    const pdfUrl = `https://docs.google.com/spreadsheets/d/${ssId}/export?format=pdf&portrait=false&size=A4&fitw=true&gridlines=true`;
+
+    return { success: true, ssUrl: ssUrl, pdfUrl: pdfUrl };
+  } catch (e) {
+    return { success: false, message: "出力中にエラーが発生しました: " + e.message };
+  }
+}
