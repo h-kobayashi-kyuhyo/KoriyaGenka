@@ -126,7 +126,7 @@
 
       <!-- ４．日次業務フォーム -->
       <div id="content-daily" class="hidden">
-        <button onclick="backToMenu()" class="mb-4 text-sm text-gray-600 hover:text-gray-900 underline flex items-center"><span class="mr-1">◀</span> メニューへ戻る</button>
+        <button id="btn-back-daily" onclick="backToMenu()" class="mb-4 text-sm text-gray-600 hover:text-gray-900 underline flex items-center"><span class="mr-1">◀</span> メニューへ戻る</button>
         <div class="bg-white p-6 rounded-lg shadow-sm border mb-4">
           <div class="flex justify-between items-center mb-6 border-b pb-2">
             <h2 class="text-xl font-bold text-gray-700">日々の記録（廃棄・試食）</h2>
@@ -449,6 +449,10 @@
             document.getElementById('content-sales').classList.add('hidden'); 
             document.getElementById('content-report').classList.add('hidden'); 
             document.getElementById('content-recipe').classList.add('hidden'); 
+            //一般ユーザーは「メニューへ戻る」ボタンを隠す
+            document.getElementById('btn-back-daily').classList.add('hidden');
+            document.getElementById('daily-action-type').value = 'new';
+            changeDailyMode();            
             
             // ※もし日次記録画面に「メニューに戻る」ボタンがあれば、ここで非表示にします
             // 例: document.getElementById('btn-back-to-menu').style.display = 'none';
@@ -459,6 +463,7 @@
             document.getElementById('content-sales').classList.add('hidden'); 
             document.getElementById('content-report').classList.add('hidden'); 
             document.getElementById('content-recipe').classList.add('hidden'); 
+            document.getElementById('btn-back-daily').classList.remove('hidden');
           }
           
         } else { 
@@ -633,7 +638,7 @@
       document.getElementById('edit-daily-key').value = '';
 
       document.getElementById('daily-qty').value = ''; 
-      document.getElementById('daily-reason').value = ''; 
+      document.getElementById('daily-reason').value = '廃棄'; 
       if(document.getElementById('search-daily-item')) document.getElementById('search-daily-item').value = ''; 
       updateDailyDropdowns(); 
       onChangeDailyCategory();
